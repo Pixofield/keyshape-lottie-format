@@ -1,0 +1,28 @@
+{
+    "id": "https://github.com/Pixofield/keyshape-lottie-format",
+    "name": "Lottie Format",
+    "description": "Import and export Lottie / Bodymovin files.",
+    "keyshape_manifest_version": 1,
+    "version": "1.0.0",
+    "homepage": "https://github.com/Pixofield/keyshape-lottie-format",
+    "author": "Pixofield Ltd",
+    "importers": [
+      {
+        "file_suffixes": [ "json" ],
+        "name": "Lottie Animation",
+        "script": "importer.js",
+        "recognize_handler": "doRecognize",
+        "import_handler": "doImport"
+      }
+    ],
+    "exporters": [
+      {
+        "exporter_id": "lottie",
+        "name": "Lottie",
+        "file_suffix": "json",
+        "script": "exporter.js",
+        "filename_handler": "getFilenames",
+        "export_handler": "exportAnimation"
+      }
+    ]
+}
