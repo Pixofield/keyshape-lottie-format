@@ -73,15 +73,12 @@ function valueOrAnimation(element, prop, defaultValue, processor)
         let kf2 = kfs[i+1];
         let val = processor ? processor(kf.value) : kf.value;
         let val2 = processor ? processor(kf2.value) : kf2.value;
-        let ease = convertEasing(kf.easing);
         let h;
         if (kf.easing.startsWith("steps(")) {
             h = 1;
             if (kf.easing.indexOf("start") > 0) { val = val2; }
         }
         let span = {
-            i: { x: [ ease[2] ], y: [ ease[3] ] },
-            o: { x: [ ease[0] ], y: [ ease[1] ] },
             t: toRoundFrame(kf.time),
             s: Array.isArray(val) ? val : [ round(val) ] // processor may return ready-made arrays
         };
@@ -89,6 +86,9 @@ function valueOrAnimation(element, prop, defaultValue, processor)
             span.h = h;
             lastS = Array.isArray(val2) ? val2 : [ round(val2) ];
         } else {
+            let ease = convertEasing(kf.easing);
+            span.i = { x: [ ease[2] ], y: [ ease[3] ] };
+            span.o = { x: [ ease[0] ], y: [ ease[1] ] };
             span.e = Array.isArray(val2) ? val2 : [ round(val2) ];
             lastS = undefined;
         }
@@ -791,6 +791,6 @@ function exportAnimation(userSelectedFileUrl)
         layers:  layers
     };
 
-    // convert object tree to xml and write to a file
+    // write to a file
     app.fs.writeFileSync(userSelectedFileUrl, JSON.stringify(json));
 }
