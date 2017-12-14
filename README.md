@@ -1,7 +1,7 @@
 
 # Lottie plugin for Keyshape
 
-This [Keyshape](https://www.pixofield.com) plugin adds support for importing and exporting
+This [Keyshape](https://www.keyshapeapp.com) plugin adds support for importing and exporting
 the [Lottie](https://airbnb.design/lottie/) file format.
 
 After installing the plugin, it is possible to open Lottie animation files in Keyshape
