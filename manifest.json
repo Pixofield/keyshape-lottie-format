@@ -24,5 +24,13 @@
         "filename_handler": "getFilenames",
         "export_handler": "exportAnimation"
       }
+    ],
+    "previewers": [
+        {
+            "previewer_id": "lottie",
+            "name": "Lottie-web",
+            "script": "exporter.js",
+            "preview_handler": "previewAnimation"
+        }
     ]
 }

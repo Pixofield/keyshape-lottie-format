@@ -12,7 +12,8 @@ function getFilenames(userSelectedFileUrl)
 
 let globalLayerIndex = 1;
 let globalFps = 10;
-let globalEndFrame = 1; // always at least one frame to show something
+let globalEndFrame = 0;
+let globalPlayRange = 0;
 
 function toFrame(timems)
 {
@@ -287,6 +288,80 @@ function pushTransformAndOpacity(array, element, topLevel)
         "nm": "Transform"
     };
     array.push(transform);
+}
+
+function maskPathElements(element)
+{
+    let paths = [];
+    for (let child of element.children) {
+        if (child.getProperty("display") == "none") {
+            continue;
+        }
+        if (child.tagName == "mask" || child.tagName == "clipPath") {
+            for (let maskChild of child.children) {
+                if (maskChild.getProperty("display") == "none") {
+                    continue;
+                }
+                if (maskChild.tagName != "path") {
+                    continue;
+                }
+                if (child.tagName == "clipPath") {
+                    // set opacity to clip path children so they can be used as masks
+                    // TODO: remove opacity keyframes
+                    maskChild.setProperty("opacity", 1);
+                }
+                paths.push(maskChild);
+            }
+        }
+    }
+    return paths;
+}
+
+function transformElementPath(element, matrix)
+{
+    if (element.timeline().hasKeyframes("d")) {
+        let kfs = element.timeline().getKeyframes("d");
+        for (let kf of kfs) {
+            let oldd = kf.value;
+            let pd = new KSPathData(oldd);
+            let p2 = pd.transform(matrix);
+            element.timeline().setKeyframe("d", kf.time, p2, kf.easing);
+        }
+
+    } else {
+        let oldd = element.getProperty("d");
+        let pd = new KSPathData(oldd);
+        let p2 = pd.transform(matrix);
+        element.setProperty("d", p2);
+    }
+}
+
+function pushMasks(layer, element)
+{
+    let pathElements = maskPathElements(element);
+    let maskArray = [];
+    for (let pathElem of pathElements) {
+        transformElementPath(pathElem, pathElem.timeline().getTransform(0));
+        let pathdata = pathElem.getProperty("d");
+        let contours = splitToContours(pathdata);
+        if (contours.length == 0) {
+            continue;
+        }
+        let mask = {
+            "inv": false,
+            "mode": "a",
+            "pt": { "a": 0, "k": convertContour(contours[0]) },
+            "o": valueOrAnimation(pathElem, "opacity", 1, function(val) { return val*100; }),
+            "x": { "a": 0, "k": 0 },
+            "nm": "Mask"
+        };
+        maskArray.push(mask);
+    }
+    if (maskArray.length == 0) {
+        return;
+    }
+    layer.hasMask = true;
+    layer.masksProperties = maskArray;
 }
 
 function createGradient(colordata, type)
@@ -638,6 +713,7 @@ function addShape(shapesArray, element, topLevel)
         pushStrokeAndFill(shape.it, element);
         pushTransformAndOpacity(shape.it, element, topLevel);
     }
+
     shape.nm = (!topLevel ? element.getProperty("id") : false) || "Object";
     shape.mn = "ADBE Vector Group";
     shape.hd = false;
@@ -686,20 +762,30 @@ function appendLayer(layersArray, element)
         ao: element.getProperty("ks:motion-rotation") == "auto" ? 1 : 0,
         shapes: shapes,
         ip: 0,
-        op: globalEndFrame,
+        op: globalEndFrame > 0 ? globalEndFrame : 1,
         st: 0, // start time
         bm: blend,
         sr: 1 // layer time stretch
     }
+    pushMasks(obj, element);
     layersArray.unshift(obj);
     globalLayerIndex++;
 }
 
-function convertToPaths(doc, element)
+function convertToPaths(doc, element, underMask)
 {
     // convert the element tree recursively to paths
     for (let child of element.children) {
-        convertToPaths(doc, child);
+        if (child.tagName == "mask" || child.tagName == "clipPath") {
+            underMask = true;
+        }
+        convertToPaths(doc, child, underMask);
+    }
+    // all rect and ellipses under masks are converted
+    if (underMask && (element.tagName == "rect" || element.tagName == "ellipse")) {
+        doc.selectedElements = [ element ];
+        doc.cmd.convertToPath();
+        return;
     }
     if (element.tagName == "rect") {
         // convert rect element to path if it has dashes to get correct start node
@@ -710,11 +796,11 @@ function convertToPaths(doc, element)
         }
 
     } else if (element.tagName == "ellipse") {
-            // convert ellipse element to path if it has dashes to get correct start node
-            if (element.getProperty("stroke-dasharray") != "none") {
-                doc.selectedElements = [ element ];
-                doc.cmd.convertToPath();
-            }
+        // convert ellipse element to path if it has dashes to get correct start node
+        if (element.getProperty("stroke-dasharray") != "none") {
+            doc.selectedElements = [ element ];
+            doc.cmd.convertToPath();
+        }
 
     } else if (element.tagName == "text") {
         // text is always converted
@@ -753,8 +839,7 @@ function calculateEndTime(element)
     }
 }
 
-// main function for exporting
-function exportAnimation(userSelectedFileUrl)
+function createJSON()
 {
     let root = app.activeDocument.documentElement;
 
@@ -764,10 +849,23 @@ function exportAnimation(userSelectedFileUrl)
     detachFromSymbols(app.activeDocument, root);
 
     // convert rects, ellipses and text to paths
-    convertToPaths(app.activeDocument, root);
+    convertToPaths(app.activeDocument, root, false);
 
     calculateEndTime(root);
-    globalEndFrame = Math.round(globalEndFrame*10)/10;
+    globalEndFrame = Math.round(globalEndFrame*10)/10; // round to 1 decimal
+
+    let ip = toFrame(root.getProperty("ks:playRangeIn") || 0);
+    let op = root.getProperty("ks:playRangeOut");
+    if (op == null || op == "last-keyframe" || op == "infinity") {
+        op = globalEndFrame;
+    } else {
+        op = toFrame(op);
+    }
+
+    if (op > globalEndFrame) { // use op in layers
+        globalEndFrame = op;
+    }
+    globalPlayRange = op - ip; // save for preview
 
     let viewBox = root.getProperty("viewBox") || "0 0 100 100";
     let viewValues = viewBox.split(" ");
@@ -782,15 +880,66 @@ function exportAnimation(userSelectedFileUrl)
     let json = {
         v: "5.0.0",
         fr: globalFps,
-        ip: 0,
-        op: globalEndFrame,
+        ip: ip,
+        op: op,
         w: round(width),
         h: round(height),
         ddd: 0,
         assets: [],
         layers:  layers
     };
+    return json;
+}
 
+// main function for exporting
+function exportAnimation(userSelectedFileUrl)
+{
+    let json = createJSON();
     // write to a file
     app.fs.writeFileSync(userSelectedFileUrl, JSON.stringify(json));
+}
+
+function previewAnimation(folderUrl)
+{
+    // copy lottie library
+    app.fs.copyFileSync(app.extension.getURL("lottie.js"), new URL("lottie.js", folderUrl));
+
+    // create Lottie json
+    let json = createJSON();
+
+    // autoplay if there are frames
+    let aplay = globalPlayRange == 0 ? "false" : "true";
+
+    // create html template
+    let html =
+`<!DOCTYPE html>
+<html>
+<head>
+  <title>Lottie-web Preview</title>
+  <script src="lottie.js"></script>
+  <style>svg { position: absolute; }</style>
+</head>
+<body style="background-color: #fff; margin: 0px;">
+
+<div id="bm"></div>
+
+<script>
+let animationData = ` + JSON.stringify(json) + `
+bodymovin.loadAnimation({
+  container: document.getElementById('bm'),
+  renderer: 'svg',
+  loop: true,
+  autoplay: `+aplay+`,
+  animationData: animationData
+})
+</script>
+</body>
+</html>
+`;
+
+    // write to one html file
+    let outfile = new URL("lottie.html", folderUrl);
+    app.fs.writeFileSync(outfile, html);
+
+    return outfile;
 }

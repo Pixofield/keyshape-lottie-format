@@ -151,6 +151,34 @@ function copyKfs(kfs, element, targetProperty)
     }
 }
 
+function readProperty(obj, multiplier)
+{
+    if (obj.a != 1 && !Array.isArray(obj.k)) {
+        return obj.k*multiplier;
+    } else {
+        let kfs = new Map();
+        for (let i = 0; i < obj.k.length; ++i) {
+            let k = obj.k[i];
+            if (i == obj.k.length-1 && k.h != 1) { // process last kf only if it is hold kf
+                break;
+            }
+            let prevk = i > 0 ? obj.k[i-1] : false;
+            let nextk = obj.k[i+1];
+            // TODO: sometimes times are negative??
+            let startTime = k.t * globalFrameDur + globalTimeOffset;
+            if (startTime >= 0) {
+                setKf(kfs, startTime, k.s[0]*multiplier, convertEasing(k, prevk));
+            }
+            let endTime = nextk ? nextk.t * globalFrameDur + globalTimeOffset : -1;
+            if (endTime >= 0 && k.e) {
+                setKf(kfs, endTime, k.e[0]*multiplier);
+            }
+        }
+        return Array.from(kfs, function([key, value]) { return { "time": key, "value": value.v, "easing": value.e } });
+//        return Array.from(kfs, ([key, value]) => { "time": key, "value": value.v, "easing": value.e });
+    }
+}
+
 function copyProperty(obj, element, targetProperty, multiplier)
 {
     if (obj.a != 1 && !Array.isArray(obj.k)) {
@@ -664,12 +692,97 @@ function createStar(shape)
     return parsePathData(data);
 }
 
-function applyPaint(fill, stroke, elements)
+function removeAllKeyframes(element, property)
+{
+    if (!element.timeline().hasKeyframes(property)) {
+        return;
+    }
+    let kfs = element.timeline().getKeyframes(property);
+    for (let kf of kfs) {
+        element.timeline().removeKeyframe(property, kf.time);
+    }
+}
+
+function copyPathTrimToDashArray(trimObj, element)
+{
+    if (!trimObj) { return; }
+    if (element.tagName != "rect" && element.tagName != "ellipse" && element.tagName != "path") {
+        return;
+    }
+    let stroke = element.getProperty("stroke");
+    if (stroke == "" || stroke == "none") {
+        return;
+    }
+    // don't override dash if it exists
+    let da = element.getProperty("stroke-dasharray").trim();
+    if (da != "" && da != "none") {
+        return;
+    }
+    let pathLen = new KSPathData(element.getProperty("d")).getTotalLength();
+    let start = 0;
+    let end = 1;
+    let offset = 0;
+    if (trimObj.s) {
+        start = readProperty(trimObj.s, 0.01);
+    }
+    if (trimObj.e) {
+        end = readProperty(trimObj.e, 0.01);
+    }
+    if (trimObj.o) {
+        offset = readProperty(trimObj.o, 0.01);
+    }
+    let staticStart = Array.isArray(start) ? start[0].value : start;
+    let staticEnd = Array.isArray(end) ? end[0].value : end;
+    let staticOffset = Array.isArray(offset) ? offset[0].value : offset;
+    removeAllKeyframes(element, "stroke-dasharray");
+    removeAllKeyframes(element, "stroke-dashoffset");
+
+    if (Array.isArray(start)) { // start animation
+        for (let i = start.length-1; i >= 0; --i) {
+            let kf = start[i];
+            element.timeline().setKeyframe("stroke-dashoffset", kf.time,
+                                           -(+kf.value+staticOffset)*pathLen, kf.easing);
+        }
+        // set dash array
+        element.setProperty("stroke-dasharray", pathLen);
+
+
+    } else if (Array.isArray(end)) { // end animation
+        for (let i = end.length-1; i >= 0; --i) {
+            let kf = end[i];
+            element.timeline().setKeyframe("stroke-dashoffset", kf.time,
+                                           (-kf.value+staticOffset-1)*pathLen, kf.easing);
+        }
+        // set dash array
+        element.setProperty("stroke-dasharray", pathLen);
+
+    } else if (Array.isArray(offset)) { // offset animation
+        for (let i = offset.length-1; i >= 0; --i) {
+            let kf = offset[i];
+            element.timeline().setKeyframe("stroke-dashoffset", kf.time,
+                                           -(+kf.value+staticStart)*pathLen, kf.easing);
+        }
+        // set dash array
+        let da = Math.ceil((staticEnd - staticStart) * pathLen * 100) / 100; // round to 2 decimals
+        element.setProperty("stroke-dasharray", da + " " + (pathLen-da));
+
+    } else { // no animations
+        element.setProperty("stroke-dashoffset", -(offset+staticStart)*pathLen);
+        // set dash array
+        if (staticStart != 0 || staticEnd != 1) {
+            let da = Math.ceil((staticEnd - staticStart) * pathLen * 100) / 100; // round to 2 decimals
+            element.setProperty("stroke-dasharray", da + " " + (pathLen-da));
+        }
+    }
+}
+
+function applyPaint(fill, stroke, trim, elements)
 {
     for (let child of elements) {
         copyFill(fill, child);
         copyStroke(stroke, child);
-        applyPaint(fill, stroke, child.children);
+        copyPathTrimToDashArray(trim, child);
+        applyPaint(fill, stroke, trim, child.children);
     }
 }
 
@@ -677,7 +790,27 @@ function applyPainting(array, elements)
 {
     let fill = findType(array, "gf") || findType(array, "fl");
     let stroke = findType(array, "gs") || findType(array, "st");
-    applyPaint(fill, stroke, elements);
+    let trim = findType(array, "tm");
+    applyPaint(fill, stroke, trim, elements);
+}
+
+function applyMask(layer, element)
+{
+    if (!layer.masksProperties) {
+        return;
+    }
+    for (let mask of layer.masksProperties) {
+        let maskPath = app.activeDocument.createElement("path");
+        maskPath.setProperty("fill", "#ffffff");
+        if (mask.pt) {
+            copyPathData(mask.pt, maskPath, 1, false);
+        }
+        copyOpacity(mask, maskPath);
+        let maskElem = app.activeDocument.createElement("mask");
+        copyName(mask, maskElem);
+        maskElem.append(maskPath);
+        element.append(maskElem);
+    }
 }
 
 function hasDashes(items)
@@ -808,6 +941,7 @@ function readLayers(parentElement, layers)
                 readLayers(elem, globalAssets[layer.refId].layers);
             }
             globalTimeOffset -= layer.ip * globalFrameDur;
+            applyMask(layer, elem);
 
         } else if (layer.ty == 1) { // solid
             elem = app.activeDocument.createElement("g");
@@ -820,6 +954,7 @@ function readLayers(parentElement, layers)
             rect.setProperty("width", layer.sw);
             rect.setProperty("height", layer.sh);
             elem.append(rect);
+            applyMask(layer, elem);
 
         } else if (layer.ty == 2) { // image
             elem = app.activeDocument.createElement("g");
@@ -835,6 +970,8 @@ function readLayers(parentElement, layers)
                 image.setProperty("width", globalAssets[layer.refId].w);
                 image.setProperty("height", globalAssets[layer.refId].h);
             }
+            applyMask(layer, elem);
+
         } else if (layer.ty == 3) { // null
             elem = app.activeDocument.createElement("g");
             layer.element = elem;
@@ -856,6 +993,8 @@ function readLayers(parentElement, layers)
                     copyOpacity(layer.ks, child);
                 }
             }
+            applyMask(layer, elem);
+
         } else if (layer.ty == 5) { // text
             elem = app.activeDocument.createElement("g");
             layer.element = elem;
@@ -897,6 +1036,7 @@ function readLayers(parentElement, layers)
                     }
                 }
             }
+            applyMask(layer, elem);
         }
 
         if (elem) {
@@ -973,8 +1113,10 @@ function doImport(filenameUrl)
     root.setProperty("viewBox", viewBox);
     copyName(json, app.activeDocument.documentElement);
 
-    globalIp = json["ip"];
-    globalOp = json["op"];
+    globalIp = json["ip"] || 0;
+    globalOp = json["op"] || 0;
+    root.setProperty("ks:playRangeIn", globalIp * globalFrameDur);
+    root.setProperty("ks:playRangeOut", globalOp * globalFrameDur);
 
     // read assets
     for (let asset of json["assets"]) {

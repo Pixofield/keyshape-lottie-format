@@ -22,18 +22,20 @@ files. Lottie files have a _.json_ file suffix.
 
 Basic Lottie features are imported successfully, but there are few limitations:
 
- * path trimming is not supported
+ * path trimming is mapped to stroke dash array animation
+ * path trimming supports only simple start to end animations
  * separated position animations are not supported
  * gradient animations are not supported
  * size animations are not supported
  * repeater is not supported
- * masks are not supported
  * expressions are not supported
  * effects are not supported
  * camera is not supported
  * frame rates are rounded to integer numbers
  * only one fill and stroke per object
  * play range times are not supported
+ * no support for inverted masks
+ * only "add" mask mode is supported, no "intersect" etc. mask modes
 
 ## Exporting Lottie animations
 
@@ -50,12 +52,17 @@ Exporting has few limitations:
  * skew X and Y are not supported at the top level objects
  * only skew X or skew Y can be set or animated, not both
  * repeating individual properties is not supported
- * path trimming is not supported
  * bitmap images are not supported
  * filters are not supported
  * blending isolation is not supported
  * text is converted to paths
  * symbols create duplicate code, which can create large files
+ * clipping paths are treated as masks
+ * masks can be only under top level objects
+ * only rects, ellipses and text are supported under masks
+ * only opacity animations are supported in masks and clipping paths
+ * masks don't support gradients
+ * masks and clipping paths cannot be used together under one element
 
 Exported Lottie animations can tested with the [LottieFiles previewer](https://www.lottiefiles.com/preview).
 
@@ -73,3 +80,6 @@ Exported Lottie animations can tested with the [LottieFiles previewer](https://w
 ## License
 
 MIT License, see the LICENSE file for details.
+
+This software includes Lottie-web JavaScript library, see LICENSE-lottie.md for details or
+the source code: https://github.com/airbnb/lottie-web
