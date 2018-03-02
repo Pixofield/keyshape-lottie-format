@@ -271,8 +271,10 @@ function copyMotionPath(obj, element)
                 setKf(kfsx, endTime, k.e[0]);
                 setKf(kfsy, endTime, k.e[1]);
                 data.v.set(endTime, [ k.e[0], k.e[1] ]);
-                data.i.set(endTime, [ k.s[0]+k.to[0], k.s[1]+k.to[1] ]);
-                data.o.set(endTime, [ k.e[0]+k.ti[0], k.e[1]+k.ti[1] ]);
+                let to = k.to ? k.to : [ 0, 0 ];
+                let ti = k.ti ? k.ti : [ 0, 0 ];
+                data.i.set(endTime, [ k.s[0]+to[0], k.s[1]+to[1] ]);
+                data.o.set(endTime, [ k.e[0]+ti[0], k.e[1]+ti[1] ]);
             }
         }
         copyKfs(kfsx, element, "ks:positionX");
