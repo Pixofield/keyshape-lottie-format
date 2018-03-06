@@ -44,7 +44,7 @@ function copyName(obj, element)
 function parsePathData(data, legacyClose)
 {
     if (!data.v || !data.i || !data.o) {
-        return;
+        return "";
     }
     let pathValue = "";
     let pt, i = 0;
