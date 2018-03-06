@@ -89,4 +89,4 @@ devices with the [LottieFiles previewer](https://www.lottiefiles.com/preview).
 MIT License, see the LICENSE file for details.
 
 This software includes Lottie-web JavaScript library, see LICENSE-lottie.md for details or
-the source code: https://github.com/airbnb/lottie-web
+see the source code: https://github.com/airbnb/lottie-web
