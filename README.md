@@ -33,7 +33,6 @@ Basic Lottie features are imported successfully, but there are few limitations:
  * camera is not supported
  * frame rates are rounded to integer numbers
  * only one fill and stroke per object
- * play range times are not supported
  * no support for inverted masks
  * only "add" mask mode is supported, no "intersect" etc. mask modes
 
@@ -58,13 +57,21 @@ Exporting has few limitations:
  * text is converted to paths
  * symbols create duplicate code, which can create large files
  * clipping paths are treated as masks
- * masks can be only under top level objects
+ * masks can only be under top level objects
  * only rects, ellipses and text are supported under masks
  * only opacity animations are supported in masks and clipping paths
  * masks don't support gradients
  * masks and clipping paths cannot be used together under one element
 
-Exported Lottie animations can tested with the [LottieFiles previewer](https://www.lottiefiles.com/preview).
+## Previewing Lottie animations
+
+Keyshape can preview Lottie animations on web browsers with the
+[Lottie-web player](https://github.com/airbnb/lottie-web). Select
+the Lottie-web option under the preview options and then press
+the Preview button to view the animation.
+
+Exported Lottie animations can also be tested on browsers and native Android and iOS
+devices with the [LottieFiles previewer](https://www.lottiefiles.com/preview).
 
 ## Lottie Resources
 
