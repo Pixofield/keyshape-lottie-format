@@ -57,10 +57,8 @@ function convertEasing(easing)
 function valueOrAnimation(element, prop, defaultValue, processor)
 {
     let kfs = [];
-    try {
-        kfs = element.timeline().getKeyframes(prop);
-    } catch (e) {
-    }
+    element.timeline().simplifyEasings(prop);
+    kfs = element.timeline().getKeyframes(prop);
     if (!kfs || kfs.length < 2) {
         let val = element.getProperty(prop) || defaultValue;
         if (processor) { val = processor(val); }
@@ -106,13 +104,10 @@ function valueOrAnimation(element, prop, defaultValue, processor)
 
 function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, processor)
 {
-    let kfsx = [];
-    let kfsy = [];
-    try {
-        kfsx = element.timeline().getKeyframes(propX);
-        kfsy = element.timeline().getKeyframes(propY);
-    } catch (e) {
-    }
+    element.timeline().simplifyEasings(propX);
+    element.timeline().simplifyEasings(propY);
+    let kfsx = element.timeline().getKeyframes(propX);
+    let kfsy = element.timeline().getKeyframes(propY);
     if (!kfsx || kfsx.length < 2) {
         let valx = element.getProperty(propX) || defaultValue;
         let valy = element.getProperty(propY) || defaultValue;
@@ -179,15 +174,19 @@ function controlPoints(commands, x, y, x2, y2, i)
     return [ round(ix-x2), round(iy-y2), round(ox-x), round(oy-y) ];
 }
 
+function clampEasingY(val)
+{
+    if (val < 0) { return 0; }
+    if (val > 1) { return 1; }
+    return val;
+}
+
 function valueOrMotionPath(element)
 {
-    let kfsx = [];
-    let kfsy = [];
-    try {
-        kfsx = element.timeline().getKeyframes("ks:positionX");
-        kfsy = element.timeline().getKeyframes("ks:positionY");
-    } catch (e) {
-    }
+    element.timeline().simplifyEasings("ks:positionX");
+    element.timeline().simplifyEasings("ks:positionY");
+    let kfsx = element.timeline().getKeyframes("ks:positionX");
+    let kfsy = element.timeline().getKeyframes("ks:positionY");
     if (!kfsx || kfsx.length < 2) {
         let valx = element.getProperty("ks:positionX");
         let valy = element.getProperty("ks:positionY");
@@ -219,8 +218,8 @@ function valueOrMotionPath(element)
         val2x = round(val2x);
         val2y = round(val2y);
         let span = {
-            i: { x: [ ease[2] ], y: [ ease[3] ] },
-            o: { x: [ ease[0] ], y: [ ease[1] ] },
+            i: { x: [ ease[2] ], y: [ clampEasingY(ease[3]) ] },
+            o: { x: [ ease[0] ], y: [ clampEasingY(ease[1]) ] },
             t: toRoundFrame(kfx.time),
             s: [ valx, valy, 0 ]
         };
@@ -320,6 +319,7 @@ function maskPathElements(element)
 function transformElementPath(element, matrix)
 {
     if (element.timeline().hasKeyframes("d")) {
+        element.timeline().simplifyEasings("d");
         let kfs = element.timeline().getKeyframes("d");
         for (let kf of kfs) {
             let oldd = kf.value;
@@ -543,11 +543,8 @@ function splitToContours(svgpath)
 
 function pushPathShapes(shapesArray, element)
 {
-    let kfs = [];
-    try {
-        kfs = element.timeline().getKeyframes("d");
-    } catch (e) {
-    }
+    element.timeline().simplifyEasings("d");
+    let kfs = element.timeline().getKeyframes("d");
     if (!kfs || kfs.length < 2) {
         // no animation
         let contours = splitToContours(element.getProperty("d"));
@@ -563,7 +560,7 @@ function pushPathShapes(shapesArray, element)
     // animation
 
     // needed to get extra contours to contract to first contour
-    kfs = app.util.makePathDataKeyframesInterpolatable(kfs);
+    kfs = app.activeDocument.makePathDataKeyframesInterpolatable(kfs);
 
     let pathshape = { ty: "sh" };
     pathshape.d = 1;
