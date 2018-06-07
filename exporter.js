@@ -640,13 +640,11 @@ function addMissingKeyframes(element, prop, destProp)
 
 function addShape(shapesArray, element, topLevel)
 {
-    let shape = {};
-    shapesArray.unshift(shape);
-
     if (element.getProperty("display") == "none") {
         return;
     }
 
+    let shape = {};
     if (element.tagName == "svg") {
         shape.ty = "gr";
         shape.it = [];
@@ -711,9 +709,13 @@ function addShape(shapesArray, element, topLevel)
         pushTransformAndOpacity(shape.it, element, topLevel);
     }
 
+    if (!shape.ty) { // unknown svg elements are ignored
+        return;
+    }
     shape.nm = (!topLevel ? element.getProperty("id") : false) || "Object";
     shape.mn = "ADBE Vector Group";
     shape.hd = false;
+    shapesArray.unshift(shape);
 }
 
 const blendingModes = [
