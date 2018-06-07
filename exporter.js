@@ -652,6 +652,7 @@ function addMissingKeyframes(element, prop, destProp)
     if (!element.timeline().hasKeyframes(prop)) {
         return;
     }
+    element.timeline().simplifyEasings(prop); // temporary fix to make width/height animations work
     let kfs = element.timeline().getKeyframes(prop);
     let destKfs = element.timeline().getKeyframes(destProp) || [];
     for (let i = kfs.length-1; i >= 0; --i) {
