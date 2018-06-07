@@ -243,6 +243,36 @@ function valueOrMotionPath(element)
     return obj;
 }
 
+function hasSkewY(element)
+{
+    // if skewX value is found, then skewing Y isn't possible
+    let skx = element.getProperty("ks:skewX") || 0;
+    if (skx != 0) {
+        return false;
+    }
+    // if skewX keyframe value is found, then skewing Y isn't possible
+    let kfsx = element.timeline().getKeyframes("ks:skewX");
+    for (let kf of kfsx) {
+        if (kf.value != 0) {
+            return false;
+        }
+    }
+    // if skewY value is found, then perform skewing Y
+    let sky = element.getProperty("ks:skewY") || 0;
+    if (sky != 0) {
+        return true;
+    }
+    // if skewY keyframe value is found, then perform skewing Y
+    let kfsy = element.timeline().getKeyframes("ks:skewY");
+    for (let kf of kfsy) {
+        if (kf.value != 0) {
+            return true;
+        }
+    }
+    // default is to skew X
+    return false;
+}
+
 function pushTransformAndOpacity(array, element, topLevel)
 {
     if (topLevel) {
@@ -261,12 +291,10 @@ function pushTransformAndOpacity(array, element, topLevel)
         return;
     }
 
-    let sky = element.getProperty("ks:skewY") || 0;
     let skewProp = "ks:skewX";
     let skewa = 0;
     let skewFunc = function(val) { return -val; };
-    let hasSkewY = sky != 0;
-    if (hasSkewY) { // if only skew y is given
+    if (hasSkewY(element)) { // if only skewY is given
         skewa = 90;
         skewProp = "ks:skewY";
         skewFunc = function(val) { return +val; };
