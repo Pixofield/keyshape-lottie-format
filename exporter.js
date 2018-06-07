@@ -164,7 +164,7 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
 
 function controlPoints(commands, x, y, x2, y2, i)
 {
-    let ix = x, iy = y, ox = x, oy = y;
+    let ix = x2, iy = y2, ox = x, oy = y;
     if (i < commands.length-1 && commands[i+1].command == "C") {
         ox = commands[i+1].x1;
         oy = commands[i+1].y1;
