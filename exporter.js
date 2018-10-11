@@ -741,7 +741,11 @@ function addShape(shapesArray, element, topLevel)
     if (!shape.ty) { // unknown svg elements are ignored
         return;
     }
-    shape.nm = (!topLevel ? element.getProperty("id") : false) || "Object";
+    let id = element.getProperty("id");
+    shape.nm = (!topLevel ? id : false) || "Object";
+    if (id !== null && id !== "" && !topLevel) {
+        shape.ln = id.replace(/ /g, '-');
+    }
     shape.mn = "ADBE Vector Group";
     shape.hd = false;
     shapesArray.unshift(shape);
@@ -780,12 +784,12 @@ function appendLayer(layersArray, element)
     let blend = blendingModes.indexOf(element.getProperty("mix-blend-mode"));
     if (blend < 0) { blend = 0; }
 
-    let id = element.getProperty("id") || "Layer "+globalLayerIndex;
+    let id = element.getProperty("id");
     let obj = {
         ddd: 0,
         ind: globalLayerIndex,
         ty: 4,
-        nm: id,
+        nm: id || "Layer "+globalLayerIndex,
         ks: transform,
         ao: element.getProperty("ks:motion-rotation") == "auto" ? 1 : 0,
         shapes: shapes,
@@ -794,6 +798,9 @@ function appendLayer(layersArray, element)
         st: 0, // start time
         bm: blend,
         sr: 1 // layer time stretch
+    }
+    if (id !== null && id !== "") {
+        obj.ln = id.replace(/ /g, '-');
     }
     pushMasks(obj, element);
     layersArray.unshift(obj);

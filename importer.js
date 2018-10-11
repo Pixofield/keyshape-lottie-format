@@ -33,7 +33,9 @@ function isUndefined(val)
 
 function copyName(obj, element)
 {
-    if (obj.nm) {
+    if (obj.ln) {
+        element.setProperty("id", obj.ln);
+    } else if (obj.nm) {
         element.setProperty("id", obj.nm);
     }
     if (obj.hd) {
