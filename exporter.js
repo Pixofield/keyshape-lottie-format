@@ -435,7 +435,6 @@ function createGradient(colordata, type)
         k: colors
     };
     gobj.nm = "Gradient Fill 1";
-    gobj.mn = type == "gs" ? "ADBE Vector Graphic - G-Stroke" : "ADBE Vector Graphic - G-Fill";
     gobj.hd = false;
     return gobj;
 }
@@ -465,8 +464,7 @@ function pushStrokeAndFill(shapesArray, element)
             strokeobj = {
                 ty: "st",
                 c: valueOrAnimation(element, "stroke", 0, convertColor),
-                nm: "Stroke 1",
-                mn: "ADBE Vector Graphic - Stroke"
+                nm: "Stroke 1"
             };
         }
         strokeobj.o = valueOrAnimation(element, "stroke-opacity", 1, function(val) { return val*100; });
@@ -510,7 +508,6 @@ function pushStrokeAndFill(shapesArray, element)
                 ty: "fl",
                 c: valueOrAnimation(element, "fill", 0, convertColor),
                 nm: "Fill 1",
-                mn: "ADBE Vector Graphic - Fill",
                 hd: false
             };
         }
@@ -579,7 +576,7 @@ function pushPathShapes(shapesArray, element)
         for (let contour of contours) {
             let pathshape = { ty: "sh" };
             pathshape.d = 1;
-            pathshape.ks = { a: 0, k: {}, nm: "Name", mn: "ADBE Vector Shape - Group", hd: false };
+            pathshape.ks = { a: 0, k: {}, nm: "Name", hd: false };
             pathshape.ks.k = convertContour(contour);
             shapesArray.push(pathshape);
         }
@@ -592,7 +589,7 @@ function pushPathShapes(shapesArray, element)
 
     let pathshape = { ty: "sh" };
     pathshape.d = 1;
-    pathshape.ks = { a: 1, k: [], nm: "Name", mn: "ADBE Vector Shape - Group", hd: false };
+    pathshape.ks = { a: 1, k: [], nm: "Name", hd: false };
 
     // collect shapes, each contour becomes one shape
     let shapes = [];
@@ -629,7 +626,7 @@ function pushPathShapes(shapesArray, element)
         sh.push({ t: toRoundFrame(lasttime[ci]) });
         let pathshape = { ty: "sh" };
         pathshape.d = 1;
-        pathshape.ks = { a: 1, k: sh, nm: "Name", mn: "ADBE Vector Shape - Group", hd: false };
+        pathshape.ks = { a: 1, k: sh, nm: "Name", hd: false };
         shapesArray.push(pathshape);
     }
 }
@@ -746,7 +743,6 @@ function addShape(shapesArray, element, topLevel)
     if (id !== null && id !== "" && !topLevel) {
         shape.ln = id.replace(/ /g, '-');
     }
-    shape.mn = "ADBE Vector Group";
     shape.hd = false;
     shapesArray.unshift(shape);
 }
