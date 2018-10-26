@@ -439,8 +439,10 @@ var Matrix = (function(){
     }
 
     function scale(sx, sy, sz) {
-        sz = isNaN(sz) ? 1 : sz;
-        if(sx == 1 && sy == 1 && sz == 1){
+        if(!sz && sz !== 0) {
+            sz = 1;
+        }
+        if(sx === 1 && sy === 1 && sz === 1){
             return this;
         }
         return this._t(sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, 0, 0, 0, 1);
@@ -1237,7 +1239,7 @@ function bezFunction(){
             lengths[i] = getBezierLength(pathV[i],pathV[i+1],pathO[i],pathI[i+1]);
             totalLength += lengths[i].addedLength;
         }
-        if(closed){
+        if(closed && len){
             lengths[i] = getBezierLength(pathV[i],pathV[0],pathO[i],pathI[0]);
             totalLength += lengths[i].addedLength;
         }
@@ -1842,9 +1844,9 @@ var FontManager = (function(){
         }
 
         if(loadedCount !== 0 && Date.now() - this.initTime < maxWaitingTime){
-            setTimeout(checkLoadedFonts.bind(this),20);
+            setTimeout(this.checkLoadedFonts.bind(this),20);
         }else{
-            setTimeout(function(){this.loaded = true;}.bind(this),0);
+            setTimeout(function(){this.isLoaded = true;}.bind(this),0);
 
         }
     }
@@ -1872,11 +1874,11 @@ var FontManager = (function(){
 
     function addFonts(fontData, defs){
         if(!fontData){
-            this.loaded = true;
+            this.isLoaded = true;
             return;
         }
         if(this.chars){
-            this.loaded = true;
+            this.isLoaded = true;
             this.fonts = fontData.list;
             return;
         }
@@ -1884,37 +1886,81 @@ var FontManager = (function(){
 
         var fontArr = fontData.list;
         var i, len = fontArr.length;
+        var _pendingFonts = len;
         for(i=0; i<len; i+= 1){
+            var shouldLoadFont = true;
+            var loadedSelector;
+            var j;
             fontArr[i].loaded = false;
             fontArr[i].monoCase = setUpNode(fontArr[i].fFamily,'monospace');
             fontArr[i].sansCase = setUpNode(fontArr[i].fFamily,'sans-serif');
             if(!fontArr[i].fPath) {
                 fontArr[i].loaded = true;
+                _pendingFonts -= 1;
             }else if(fontArr[i].fOrigin === 'p' || fontArr[i].origin === 3){
-                var s = createTag('style');
-                s.type = "text/css";
-                s.innerHTML = "@font-face {" + "font-family: "+fontArr[i].fFamily+"; font-style: normal; src: url('"+fontArr[i].fPath+"');}";
-                defs.appendChild(s);
+                loadedSelector = document.querySelectorAll('style[f-forigin="p"][f-family="'+ fontArr[i].fFamily +'"], style[f-origin="3"][f-family="'+ fontArr[i].fFamily +'"]');
+
+                if (loadedSelector.length > 0) {
+                    shouldLoadFont = false;
+                }
+
+                if (shouldLoadFont) {
+                    var s = createTag('style');
+                    s.setAttribute('f-forigin', fontArr[i].fOrigin);
+                    s.setAttribute('f-origin', fontArr[i].origin);
+                    s.setAttribute('f-family', fontArr[i].fFamily);
+                    s.type = "text/css";
+                    s.innerHTML = "@font-face {" + "font-family: "+fontArr[i].fFamily+"; font-style: normal; src: url('"+fontArr[i].fPath+"');}";
+                    defs.appendChild(s);
+                }
             } else if(fontArr[i].fOrigin === 'g' || fontArr[i].origin === 1){
-                var l = createTag('link');
-                l.type = "text/css";
-                l.rel = "stylesheet";
-                l.href = fontArr[i].fPath;
-                document.body.appendChild(l);
+                loadedSelector = document.querySelectorAll('link[f-forigin="g"], link[f-origin="1"]');
+
+                for (j = 0; j < loadedSelector.length; j++) {
+                    if (loadedSelector[j].href.indexOf(fontArr[i].fPath) !== -1) {
+                        // Font is already loaded
+                        shouldLoadFont = false;
+                    }
+                }
+
+                if (shouldLoadFont) {
+                    var l = createTag('link');
+                    l.setAttribute('f-forigin', fontArr[i].fOrigin);
+                    l.setAttribute('f-origin', fontArr[i].origin);
+                    l.type = "text/css";
+                    l.rel = "stylesheet";
+                    l.href = fontArr[i].fPath;
+                    document.body.appendChild(l);
+                }
             } else if(fontArr[i].fOrigin === 't' || fontArr[i].origin === 2){
-                var sc = createTag('script');
-                sc.setAttribute('src',fontArr[i].fPath);
-                defs.appendChild(sc);
+                loadedSelector = document.querySelectorAll('script[f-forigin="t"], script[f-origin="2"]');
+
+                for (j = 0; j < loadedSelector.length; j++) {
+                    if (fontArr[i].fPath === loadedSelector[j].src) {
+                        // Font is already loaded
+                        shouldLoadFont = false;
+                    }
+                }
+
+                if (shouldLoadFont) {
+                    var sc = createTag('script');
+                    sc.setAttribute('f-forigin', fontArr[i].fOrigin);
+                    sc.setAttribute('f-origin', fontArr[i].origin);
+                    sc.setAttribute('src',fontArr[i].fPath);
+                    defs.appendChild(sc);
+                }
             }
             fontArr[i].helper = createHelper(defs,fontArr[i]);
             fontArr[i].cache = {};
             this.fonts.push(fontArr[i]);
         }
-        //On some cases the font even if it is loaded, it won't load correctly when measuring text on canvas.
-        //Adding this timeout seems to fix it
-       setTimeout(function() {
-            checkLoadedFonts.bind(this)();
-        }.bind(this), 100);
+        if (_pendingFonts === 0) {
+            this.isLoaded = true;
+        } else {
+            //On some cases even if the font is loaded, it won't load correctly when measuring text on canvas.
+            //Adding this timeout seems to fix it
+           setTimeout(this.checkLoadedFonts.bind(this), 100);
+        }
     }
 
     function addChars(chars){
@@ -1970,7 +2016,6 @@ var FontManager = (function(){
             tHelper.textContent = '||';
             var singleSize = tHelper.getComputedTextLength();
             fontData.cache[index + 1] = (doubleSize - singleSize)/100;*/
-           
             tHelper.textContent = char;
             fontData.cache[index + 1] = (tHelper.getComputedTextLength())/100;
         }
@@ -1992,11 +2037,15 @@ var FontManager = (function(){
         return combinedCharacters;
     }
 
+    function loaded() {
+        return this.isLoaded;
+    }
+
     var Font = function(){
         this.fonts = [];
         this.chars = null;
         this.typekitLoaded = 0;
-        this.loaded = false;
+        this.isLoaded = false;
         this.initTime = Date.now();
     };
     //TODO: for now I'm adding these methods to the Class and not the prototype. Think of a better way to implement it. 
@@ -2007,6 +2056,8 @@ var FontManager = (function(){
     Font.prototype.getCharData = getCharData;
     Font.prototype.getFontByName = getFontByName;
     Font.prototype.measureText = measureText;
+    Font.prototype.checkLoadedFonts = checkLoadedFonts;
+    Font.prototype.loaded = loaded;
 
     return Font;
 
@@ -2016,61 +2067,62 @@ var PropertyFactory = (function(){
     var initFrame = initialDefaultFrame;
     var math_abs = Math.abs;
 
-    function interpolateValue(frameNum, caching){
+    function interpolateValue(frameNum, caching) {
         var offsetTime = this.offsetTime;
         var newValue;
-        if(this.propType === 'multidimensional') {
+        if (this.propType === 'multidimensional') {
             newValue = createTypedArray('float32', this.pv.length);
         }
         var iterationIndex = caching.lastIndex;
         var i = iterationIndex;
-        var len = this.keyframes.length- 1,flag = true;
+        var len = this.keyframes.length - 1, flag = true;
         var keyData, nextKeyData;
 
-        while(flag){
+        while (flag) {
             keyData = this.keyframes[i];
-            nextKeyData = this.keyframes[i+1];
-            if(i == len-1 && frameNum >= nextKeyData.t - offsetTime){
+            nextKeyData = this.keyframes[i + 1];
+            if (i === len - 1 && frameNum >= nextKeyData.t - offsetTime){
                 if(keyData.h){
                     keyData = nextKeyData;
                 }
                 iterationIndex = 0;
                 break;
             }
-            if((nextKeyData.t - offsetTime) > frameNum){
+            if ((nextKeyData.t - offsetTime) > frameNum){
                 iterationIndex = i;
                 break;
             }
-            if(i < len - 1){
+            if (i < len - 1){
                 i += 1;
-            }else{
+            } else {
                 iterationIndex = 0;
                 flag = false;
             }
         }
 
-        var k, kLen,perc,jLen, j, fnc;
-        if(keyData.to){
-
-            if(!keyData.bezierData){
+        var k, kLen, perc, jLen, j, fnc;
+        var nextKeyTime = nextKeyData.t - offsetTime;
+        var keyTime = keyData.t - offsetTime;
+        if (keyData.to) {
+            if (!keyData.bezierData) {
                 bez.buildBezierData(keyData);
             }
             var bezierData = keyData.bezierData;
-            if(frameNum >= nextKeyData.t-offsetTime || frameNum < keyData.t-offsetTime){
-                var ind = frameNum >= nextKeyData.t-offsetTime ? bezierData.points.length - 1 : 0;
+            if (frameNum >= nextKeyTime || frameNum < keyTime) {
+                var ind = frameNum >= nextKeyTime ? bezierData.points.length - 1 : 0;
                 kLen = bezierData.points[ind].point.length;
-                for(k = 0; k < kLen; k += 1){
+                for (k = 0; k < kLen; k += 1) {
                     newValue[k] = bezierData.points[ind].point[k];
                 }
-                caching._lastBezierData = null;
-            }else{
-                if(keyData.__fnct){
+                // caching._lastBezierData = null;
+            } else {
+                if (keyData.__fnct) {
                     fnc = keyData.__fnct;
-                }else{
-                    fnc = BezierFactory.getBezierEasing(keyData.o.x,keyData.o.y,keyData.i.x,keyData.i.y,keyData.n).get;
+                } else {
+                    fnc = BezierFactory.getBezierEasing(keyData.o.x, keyData.o.y, keyData.i.x, keyData.i.y, keyData.n).get;
                     keyData.__fnct = fnc;
                 }
-                perc = fnc((frameNum-(keyData.t-offsetTime))/((nextKeyData.t-offsetTime)-(keyData.t-offsetTime)));
+                perc = fnc((frameNum - keyTime) / (nextKeyTime - keyTime));
                 var distanceInLine = bezierData.segmentLength*perc;
 
                 var segmentPerc;
@@ -2078,25 +2130,25 @@ var PropertyFactory = (function(){
                 j =  (caching.lastFrame < frameNum && caching._lastBezierData === bezierData) ? caching._lastPoint : 0;
                 flag = true;
                 jLen = bezierData.points.length;
-                while(flag){
-                    addedLength +=bezierData.points[j].partialLength;
-                    if(distanceInLine === 0 || perc === 0 || j == bezierData.points.length - 1){
+                while (flag) {
+                    addedLength += bezierData.points[j].partialLength;
+                    if (distanceInLine === 0 || perc === 0 || j === bezierData.points.length - 1) {
                         kLen = bezierData.points[j].point.length;
-                        for(k=0;k<kLen;k+=1){
+                        for (k = 0; k < kLen; k += 1) {
                             newValue[k] = bezierData.points[j].point[k];
                         }
                         break;
-                    }else if(distanceInLine >= addedLength && distanceInLine < addedLength + bezierData.points[j+1].partialLength){
-                        segmentPerc = (distanceInLine-addedLength)/(bezierData.points[j+1].partialLength);
+                    } else if (distanceInLine >= addedLength && distanceInLine < addedLength + bezierData.points[j + 1].partialLength) {
+                        segmentPerc = (distanceInLine - addedLength) / bezierData.points[j + 1].partialLength;
                         kLen = bezierData.points[j].point.length;
-                        for(k=0;k<kLen;k+=1){
-                            newValue[k] = bezierData.points[j].point[k] + (bezierData.points[j+1].point[k] - bezierData.points[j].point[k])*segmentPerc;
+                        for (k = 0; k < kLen; k += 1) {
+                            newValue[k] = bezierData.points[j].point[k] + (bezierData.points[j + 1].point[k] - bezierData.points[j].point[k]) * segmentPerc;
                         }
                         break;
                     }
-                    if(j < jLen - 1){
+                    if (j < jLen - 1){
                         j += 1;
-                    }else{
+                    } else {
                         flag = false;
                     }
                 }
@@ -2104,35 +2156,35 @@ var PropertyFactory = (function(){
                 caching._lastAddedLength = addedLength - bezierData.points[j].partialLength;
                 caching._lastBezierData = bezierData;
             }
-        }else{
-            var outX,outY,inX,inY, keyValue;
+        } else {
+            var outX, outY, inX, inY, keyValue;
             len = keyData.s.length;
-            if(this.sh && keyData.h !== 1) {
-                if(frameNum >= nextKeyData.t-offsetTime){
+            if (this.sh && keyData.h !== 1) {
+                if (frameNum >= nextKeyTime) {
                     newValue[0] = keyData.e[0];
                     newValue[1] = keyData.e[1];
                     newValue[2] = keyData.e[2];
-                }else if(frameNum <= keyData.t-offsetTime){
+                } else if (frameNum <= keyTime) {
                     newValue[0] = keyData.s[0];
                     newValue[1] = keyData.s[1];
                     newValue[2] = keyData.s[2];
-                }else{
+                } else {
                     var quatStart = createQuaternion(keyData.s);
                     var quatEnd = createQuaternion(keyData.e);
-                    var time = (frameNum-(keyData.t-offsetTime))/((nextKeyData.t-offsetTime)-(keyData.t-offsetTime));
+                    var time = (frameNum - keyTime) / (nextKeyTime - keyTime);
                     quaternionToEuler(newValue, slerp(quatStart, quatEnd, time));
                 }
                 
             } else {
-                for(i=0;i<len;i+=1){
-                    if(keyData.h !== 1){
-                        if(frameNum >= nextKeyData.t-offsetTime){
+                for(i = 0; i < len; i += 1) {
+                    if (keyData.h !== 1) {
+                        if (frameNum >= nextKeyTime) {
                             perc = 1;
-                        }else if(frameNum < keyData.t-offsetTime){
+                        } else if(frameNum < keyTime) {
                             perc = 0;
-                        }else{
-                            if(keyData.o.x.constructor === Array){
-                                if(!keyData.__fnct){
+                        } else {
+                            if(keyData.o.x.constructor === Array) {
+                                if (!keyData.__fnct) {
                                     keyData.__fnct = [];
                                 }
                                 if (!keyData.__fnct[i]) {
@@ -2140,7 +2192,7 @@ var PropertyFactory = (function(){
                                     outY = keyData.o.y[i] || keyData.o.y[0];
                                     inX = keyData.i.x[i] || keyData.i.x[0];
                                     inY = keyData.i.y[i] || keyData.i.y[0];
-                                    fnc = BezierFactory.getBezierEasing(outX,outY,inX,inY).get;
+                                    fnc = BezierFactory.getBezierEasing(outX, outY, inX, inY).get;
                                     keyData.__fnct[i] = fnc;
                                 } else {
                                     fnc = keyData.__fnct[i];
@@ -2151,21 +2203,21 @@ var PropertyFactory = (function(){
                                     outY = keyData.o.y;
                                     inX = keyData.i.x;
                                     inY = keyData.i.y;
-                                    fnc = BezierFactory.getBezierEasing(outX,outY,inX,inY).get;
+                                    fnc = BezierFactory.getBezierEasing(outX, outY, inX, inY).get;
                                     keyData.__fnct = fnc;
-                                } else{
+                                } else {
                                     fnc = keyData.__fnct;
                                 }
                             }
-                            perc = fnc((frameNum-(keyData.t-offsetTime))/((nextKeyData.t-offsetTime)-(keyData.t-offsetTime)));
+                            perc = fnc((frameNum - keyTime) / (nextKeyTime - keyTime ));
                         }
                     }
 
-                    keyValue = keyData.h === 1 ? keyData.s[i] : keyData.s[i]+(keyData.e[i]-keyData.s[i])*perc;
+                    keyValue = keyData.h === 1 ? keyData.s[i] : keyData.s[i] + (keyData.e[i] - keyData.s[i]) * perc;
 
-                    if(len === 1){
+                    if (len === 1) {
                         newValue = keyValue;
-                    }else{
+                    } else {
                         newValue[i] = keyValue;
                     }
                 }
@@ -2244,7 +2296,11 @@ var PropertyFactory = (function(){
         var initTime = this.keyframes[0].t - this.offsetTime;
         var endTime = this.keyframes[this.keyframes.length- 1].t-this.offsetTime;
         if(!(frameNum === this._caching.lastFrame || (this._caching.lastFrame !== initFrame && ((this._caching.lastFrame >= endTime && frameNum >= endTime) || (this._caching.lastFrame < initTime && frameNum < initTime))))){
-            this._caching.lastIndex = this._caching.lastFrame < frameNum ? this._caching.lastIndex : 0;
+            if(this._caching.lastFrame >= frameNum) {
+                this._caching._lastBezierData = null;
+                this._caching.lastIndex = 0;
+            }
+
             var renderResult = this.interpolateValue(frameNum, this._caching);
             this.pv = renderResult;
         }
@@ -2352,7 +2408,7 @@ var PropertyFactory = (function(){
         this.keyframes = data.k;
         this.offsetTime = elem.data.st;
         this.frameId = -1;
-        this._caching = {lastFrame: initFrame, lastIndex: 0, value: 0};
+        this._caching = {lastFrame: initFrame, lastIndex: 0, value: 0, _lastBezierData: null};
         this.k = true;
         this.kf = true;
         this.data = data;
@@ -2513,17 +2569,38 @@ var TransformPropertyFactory = (function() {
             } else if (!this.r && this.appliedTransformations < 4){
                 this.v.rotateZ(-this.rz.v).rotateY(this.ry.v).rotateX(this.rx.v).rotateZ(-this.or.v[2]).rotateY(this.or.v[1]).rotateX(this.or.v[0]);
             }
-            if (this.autoOriented && this.p.keyframes && this.p.getValueAtTime) {
-                var v1,v2;
-                if (this.p._caching.lastFrame+this.p.offsetTime <= this.p.keyframes[0].t) {
-                    v1 = this.p.getValueAtTime((this.p.keyframes[0].t + 0.01) / this.elem.globalData.frameRate,0);
-                    v2 = this.p.getValueAtTime(this.p.keyframes[0].t / this.elem.globalData.frameRate, 0);
-                } else if(this.p._caching.lastFrame+this.p.offsetTime >= this.p.keyframes[this.p.keyframes.length - 1].t) {
-                    v1 = this.p.getValueAtTime((this.p.keyframes[this.p.keyframes.length - 1].t / this.elem.globalData.frameRate), 0);
-                    v2 = this.p.getValueAtTime((this.p.keyframes[this.p.keyframes.length - 1].t - 0.01) / this.elem.globalData.frameRate, 0);
-                } else {
-                    v1 = this.p.pv;
-                    v2 = this.p.getValueAtTime((this.p._caching.lastFrame+this.p.offsetTime - 0.01) / this.elem.globalData.frameRate, this.p.offsetTime);
+            if (this.autoOriented) {
+                var v1,v2, frameRate = this.elem.globalData.frameRate;
+                if(this.p && this.p.keyframes && this.p.getValueAtTime) {
+                    if (this.p._caching.lastFrame+this.p.offsetTime <= this.p.keyframes[0].t) {
+                        v1 = this.p.getValueAtTime((this.p.keyframes[0].t + 0.01) / frameRate,0);
+                        v2 = this.p.getValueAtTime(this.p.keyframes[0].t / frameRate, 0);
+                    } else if(this.p._caching.lastFrame+this.p.offsetTime >= this.p.keyframes[this.p.keyframes.length - 1].t) {
+                        v1 = this.p.getValueAtTime((this.p.keyframes[this.p.keyframes.length - 1].t / frameRate), 0);
+                        v2 = this.p.getValueAtTime((this.p.keyframes[this.p.keyframes.length - 1].t - 0.01) / frameRate, 0);
+                    } else {
+                        v1 = this.p.pv;
+                        v2 = this.p.getValueAtTime((this.p._caching.lastFrame+this.p.offsetTime - 0.01) / frameRate, this.p.offsetTime);
+                    }
+                } else if(this.px && this.px.keyframes && this.py.keyframes && this.px.getValueAtTime && this.py.getValueAtTime) {
+                    v1 = [];
+                    v2 = [];
+                    var px = this.px, py = this.py, frameRate;
+                    if (px._caching.lastFrame+px.offsetTime <= px.keyframes[0].t) {
+                        v1[0] = px.getValueAtTime((px.keyframes[0].t + 0.01) / frameRate,0);
+                        v1[1] = py.getValueAtTime((py.keyframes[0].t + 0.01) / frameRate,0);
+                        v2[0] = px.getValueAtTime((px.keyframes[0].t) / frameRate,0);
+                        v2[1] = py.getValueAtTime((py.keyframes[0].t) / frameRate,0);
+                    } else if(px._caching.lastFrame+px.offsetTime >= px.keyframes[px.keyframes.length - 1].t) {
+                        v1[0] = px.getValueAtTime((px.keyframes[px.keyframes.length - 1].t / frameRate),0);
+                        v1[1] = py.getValueAtTime((py.keyframes[py.keyframes.length - 1].t / frameRate),0);
+                        v2[0] = px.getValueAtTime((px.keyframes[px.keyframes.length - 1].t - 0.01) / frameRate,0);
+                        v2[1] = py.getValueAtTime((py.keyframes[py.keyframes.length - 1].t - 0.01) / frameRate,0);
+                    } else {
+                        v1 = [px.pv, py.pv];
+                        v2[0] = px.getValueAtTime((px._caching.lastFrame+px.offsetTime - 0.01) / frameRate,px.offsetTime);
+                        v2[1] = py.getValueAtTime((py._caching.lastFrame+py.offsetTime - 0.01) / frameRate,py.offsetTime);
+                    }
                 }
                 this.v.rotate(-Math.atan2(v1[1] - v2[1], v1[0] - v2[0]));
             }
@@ -2842,33 +2919,46 @@ var ShapePropertyFactory = (function(){
         }
         var i, len = shape1._length;
         for(i = 0; i < len; i += 1) {
-            if(shape1.v[i][0] !== shape2.v[i][0] || shape1.v[i][1] !== shape2.v[i][1] || shape1.o[i][0] !== shape2.o[i][0] || shape1.o[i][1] !== shape2.o[i][1] || shape1.i[i][0] !== shape2.i[i][0] || shape1.i[i][1] !== shape2.i[i][1]){
+            if(shape1.v[i][0] !== shape2.v[i][0] 
+            || shape1.v[i][1] !== shape2.v[i][1] 
+            || shape1.o[i][0] !== shape2.o[i][0] 
+            || shape1.o[i][1] !== shape2.o[i][1] 
+            || shape1.i[i][0] !== shape2.i[i][0] 
+            || shape1.i[i][1] !== shape2.i[i][1]) {
                 return false;
             }
         }
         return true;
     }
 
+    function setVValue(newPath) {
+        if(!shapesEqual(this.v, newPath)) {
+            this.v = shape_pool.clone(newPath);
+            this.localShapeCollection.releaseShapes();
+            this.localShapeCollection.addShape(this.v);
+            this._mdf = true;
+            this.paths = this.localShapeCollection;
+        }
+    }
+
     function processEffectsSequence() {
-        if(this.lock || this.elem.globalData.frameId === this.frameId) {
+        if(this.elem.globalData.frameId === this.frameId || !this.effectsSequence.length) {
+            return;
+        }
+        if(this.lock) {
+            this.setVValue(this.pv);
             return;
         }
         this.lock = true;
-        this.frameId = this.elem.globalData.frameId;
         this._mdf = false;
         var finalValue = this.kf ? this.pv : this.data.ks ? this.data.ks.k : this.data.pt.k;
         var i, len = this.effectsSequence.length;
         for(i = 0; i < len; i += 1) {
             finalValue = this.effectsSequence[i](finalValue);
         }
-        if(!shapesEqual(this.v, finalValue)) {
-            this.v = shape_pool.clone(finalValue);
-            this.localShapeCollection.releaseShapes();
-            this.localShapeCollection.addShape(this.v);
-            this._mdf = true;
-            this.paths = this.localShapeCollection;
-        }
+        this.setVValue(finalValue);
         this.lock = false;
+        this.frameId = this.elem.globalData.frameId;
     };
 
     function ShapeProperty(elem, data, type){
@@ -2897,7 +2987,7 @@ var ShapePropertyFactory = (function(){
 
     ShapeProperty.prototype.interpolateShape = interpolateShape;
     ShapeProperty.prototype.getValue = processEffectsSequence;
-    ShapeProperty.prototype.getValue = processEffectsSequence;
+    ShapeProperty.prototype.setVValue = setVValue;
     ShapeProperty.prototype.addEffect = addEffect;
 
     function KeyframedShapeProperty(elem,data,type){
@@ -2924,6 +3014,7 @@ var ShapePropertyFactory = (function(){
     }
     KeyframedShapeProperty.prototype.getValue = processEffectsSequence;
     KeyframedShapeProperty.prototype.interpolateShape = interpolateShape;
+    KeyframedShapeProperty.prototype.setVValue = setVValue;
     KeyframedShapeProperty.prototype.addEffect = addEffect;
 
     var EllShapeProperty = (function(){
@@ -3375,8 +3466,8 @@ TrimModifier.prototype.processShapes = function(_isFirstFrame) {
         if (o < 0) {
             o += 1;
         }
-        s = this.s.v + o;
-        e = this.e.v + o;
+        s = (this.s.v > 1 ? 1 : this.s.v < 0 ? 0 : this.s.v) + o;
+        e = (this.e.v > 1 ? 1 : this.e.v < 0 ? 0 : this.e.v) + o;
         if (s === e) {
 
         }
@@ -3385,8 +3476,8 @@ TrimModifier.prototype.processShapes = function(_isFirstFrame) {
             s = e;
             e = _s;
         }
-        s = Math.round(s*1000)/1000;
-        e = Math.round(e*1000)/1000;
+        s = Math.round(s * 10000) * 0.0001;
+        e = Math.round(e * 10000) * 0.0001;
         this.sValue = s;
         this.eValue = e;
     } else {
@@ -3472,7 +3563,8 @@ TrimModifier.prototype.processShapes = function(_isFirstFrame) {
                     var newShapesData = this.addShapes(shapeData,segments[0]);
                     if (segments[0].s !== segments[0].e) {
                         if (segments.length > 1) {
-                            if (shapeData.shape.v.c) {
+                            var lastShapeInCollection = shapeData.shape.paths.shapes[shapeData.shape.paths._length - 1];
+                            if (lastShapeInCollection.c) {
                                 var lastShape = newShapesData.pop();
                                 this.addPaths(newShapesData, localShapeCollection);
                                 newShapesData = this.addShapes(shapeData, segments[1], lastShape);
@@ -3490,6 +3582,9 @@ TrimModifier.prototype.processShapes = function(_isFirstFrame) {
         }
     } else if (this._mdf) {
         for (i = 0; i < len; i += 1) {
+            //Releasign Trim Cached paths data when no trim applied in case shapes are modified inbetween.
+            //Don't remove this even if it's losing cached info.
+            this.shapes[i].pathsData.length = 0;
             this.shapes[i].shape._mdf = true;
         }
     }
@@ -3567,7 +3662,7 @@ TrimModifier.prototype.addShapes = function(shapeData, shapeSegment, shapePath) 
                 segmentCount += 1;
             }
         }
-        if (shapePaths[i].c) {
+        if (shapePaths[i].c && lengths.length) {
             currentLengthData = lengths[j - 1];
             if (addedLength <= shapeSegment.e) {
                 var segmentLength = lengths[j - 1].addedLength;
@@ -3707,6 +3802,8 @@ RepeaterModifier.prototype.initModifierProperties = function(elem,data){
     this.c = PropertyFactory.getProp(elem,data.c,0,null,this);
     this.o = PropertyFactory.getProp(elem,data.o,0,null,this);
     this.tr = TransformPropertyFactory.getTransformProperty(elem,data.tr,this);
+    this.so = PropertyFactory.getProp(elem,data.tr.so,0,0.01,this);
+    this.eo = PropertyFactory.getProp(elem,data.tr.eo,0,0.01,this);
     this.data = data;
     if(!this.dynamicProperties.length){
         this.getValue(true);
@@ -3858,6 +3955,7 @@ RepeaterModifier.prototype.processShapes = function(_isFirstFrame) {
             jLen = itemsTransform.length;
             items[items.length - 1].transform.mProps._mdf = true;
             items[items.length - 1].transform.op._mdf = true;
+            items[items.length - 1].transform.op.v = this.so.v + (this.eo.v - this.so.v) * (i / (this._currentCopies - 1));
             if(iteration !== 0){
                 if((i !== 0 && dir === 1) || (i !== this._currentCopies - 1 && dir === -1)){
                     this.applyTransforms(this.pMatrix, this.rMatrix, this.sMatrix, this.tr, 1, false);
@@ -3968,7 +4066,7 @@ DashProperty.prototype.getValue = function(forceRender) {
     }
 };
 extendPrototype([DynamicPropertyContainer], DashProperty);
-function GradientProperty(elem,data){
+function GradientProperty(elem,data,container){
     this.data = data;
     this.c = createTypedArray('uint8c', data.p*4);
     var cLength = data.k.k[0].s ? (data.k.k[0].s.length - data.p*4) : data.k.k.length - data.p*4;
@@ -3977,7 +4075,7 @@ function GradientProperty(elem,data){
     this._omdf = false;
     this._collapsable = this.checkCollapsable();
     this._hasOpacity = cLength;
-    this.initDynamicPropertyContainer(elem);
+    this.initDynamicPropertyContainer(container);
     this.prop = PropertyFactory.getProp(elem,data.k,1,null,this);
     this.k = this.prop.k;
     this.getValue(true);
@@ -4064,6 +4162,16 @@ var buildShapeString = function(pathNodes, length, closed, mat) {
 }
 var ImagePreloader = (function(){
 
+    var proxyImage = (function(){
+        var canvas = createTag('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(0, 0, 1, 1);
+        return canvas;
+    }())
+
     function imageLoaded(){
         this.loadedAssets += 1;
         if(this.loadedAssets === this.totalImages){
@@ -4073,38 +4181,48 @@ var ImagePreloader = (function(){
         }
     }
 
-    function getAssetsPath(assetData){
+    function getAssetsPath(assetData, assetsPath, original_path) {
         var path = '';
-        if(assetData.e) {
+        if (assetData.e) {
             path = assetData.p;
-        }else if(this.assetsPath){
+        } else if(assetsPath) {
             var imagePath = assetData.p;
-            if(imagePath.indexOf('images/') !== -1){
+            if (imagePath.indexOf('images/') !== -1) {
                 imagePath = imagePath.split('/')[1];
             }
-            path = this.assetsPath + imagePath;
+            path = assetsPath + imagePath;
         } else {
-            path = this.path;
+            path = original_path;
             path += assetData.u ? assetData.u : '';
             path += assetData.p;
         }
         return path;
     }
 
-    function loadImage(path){
+    function createImageData(assetData) {
+        var path = getAssetsPath(assetData, this.assetsPath, this.path);
         var img = createTag('img');
-        img.addEventListener('load', imageLoaded.bind(this), false);
-        img.addEventListener('error', imageLoaded.bind(this), false);
+        img.crossOrigin = 'anonymous';
+        img.addEventListener('load', this._imageLoaded.bind(this), false);
+        img.addEventListener('error', function() {
+            ob.img = proxyImage;
+            this._imageLoaded();
+        }.bind(this), false);
         img.src = path;
+        var ob = {
+            img: img,
+            assetData: assetData
+        }
+        return ob;
     }
+
     function loadAssets(assets, cb){
         this.imagesLoadedCb = cb;
-        this.totalAssets = assets.length;
-        var i;
-        for(i=0;i<this.totalAssets;i+=1){
+        var i, len = assets.length;
+        for (i = 0; i < len; i += 1) {
             if(!assets[i].layers){
-                loadImage.bind(this)(getAssetsPath.bind(this)(assets[i]));
                 this.totalImages += 1;
+                this.images.push(this._createImageData(assets[i]));
             }
         }
     }
@@ -4117,21 +4235,40 @@ var ImagePreloader = (function(){
         this.assetsPath = path || '';
     }
 
+    function getImage(assetData) {
+        var i = 0, len = this.images.length;
+        while (i < len) {
+            if (this.images[i].assetData === assetData) {
+                return this.images[i].img;
+            }
+            i += 1;
+        }
+    }
+
     function destroy() {
         this.imagesLoadedCb = null;
+        this.images.length = 0;
+    }
+
+    function loaded() {
+        return this.totalImages === this.loadedAssets;
     }
 
     return function ImagePreloader(){
         this.loadAssets = loadAssets;
         this.setAssetsPath = setAssetsPath;
         this.setPath = setPath;
+        this.loaded = loaded;
         this.destroy = destroy;
+        this.getImage = getImage;
+        this._createImageData = createImageData;
+        this._imageLoaded = imageLoaded;
         this.assetsPath = '';
         this.path = '';
-        this.totalAssets = 0;
         this.totalImages = 0;
         this.loadedAssets = 0;
         this.imagesLoadedCb = null;
+        this.images = [];
     };
 }());
 var featureSupport = (function(){
@@ -4181,7 +4318,7 @@ var assetLoader = (function(){
 		}
 	}
 
-	function loadAsset(path, callback, error) {
+	function loadAsset(path, callback, errorCallback) {
 		var response;
 		var xhr = new XMLHttpRequest();
 		xhr.open('GET', path, true);
@@ -4198,8 +4335,8 @@ var assetLoader = (function(){
 	            		response = formatResponse(xhr);
 	            		callback(response);
 	                }catch(err){
-	                	if(error_callback) {
-	                		error_callback(err);
+	                	if(errorCallback) {
+	                		errorCallback(err);
 	                	}
 	                }
 	            }
@@ -4210,6 +4347,7 @@ var assetLoader = (function(){
 		load: loadAsset
 	}
 }())
+
 function TextAnimatorProperty(textData, renderType, elem){
     this._isFirstFrame = true;
 	this._hasMaskedPath = false;
@@ -4866,10 +5004,10 @@ function TextProperty(elem, data){
 	this.kf = false;
 	this._isFirstFrame = true;
 	this._mdf = false;
-	this.data = data;
+    this.data = data;
 	this.elem = elem;
     this.comp = this.elem.comp;
-	this.keysIndex = -1;
+	this.keysIndex = 0;
     this.canResize = false;
     this.minimumFontSize = 1;
     this.effectsSequence = [];
@@ -4901,68 +5039,34 @@ function TextProperty(elem, data){
         finalSize:0,
         finalText:[],
         finalLineHeight: 0,
-        __test: true
+        __complete: false
 
 	};
-    this.copyFromDocumentData(this.data.d.k[0].s);
-    
+    this.copyData(this.currentData, this.data.d.k[0].s);
+
     if(!this.searchProperty()) {
         this.completeTextData(this.currentData);
-        this.keysIndex = 0;
     }
 }
 
 TextProperty.prototype.defaultBoxWidth = [0,0];
 
-TextProperty.prototype.copyFromDocumentData = function(data) {
+TextProperty.prototype.copyData = function(obj, data) {
     for(var s in data) {
-        this.currentData[s] = data[s];
+        if(data.hasOwnProperty(s)) {
+            obj[s] = data[s];
+        }
     }
+    return obj;
 }
 
-TextProperty.prototype.setCurrentData = function(data, currentTextValue){
-        if(this.currentData !== data) {
-            if(!data.__complete) {
-                this.completeTextData(data);
-            }
-            this.copyFromDocumentData(data);
-            this.currentData.boxWidth = this.currentData.boxWidth || this.defaultBoxWidth;
-            this.currentData.fillColorAnim = data.fillColorAnim || this.currentData.fillColorAnim;
-            this.currentData.strokeColorAnim = data.strokeColorAnim || this.currentData.strokeColorAnim;
-            this.currentData.strokeWidthAnim = data.strokeWidthAnim || this.currentData.strokeWidthAnim;
-            this._mdf = true;
-        } else if(currentTextValue !== this.currentData.t) {
-            this._mdf = true;
-            this.completeTextData(data);
-        }
-		/*var currentData = this.currentData;
-        currentData.ascent = data.ascent;
-        currentData.boxWidth = data.boxWidth ? data.boxWidth : currentData.boxWidth;
-        currentData.f = data.f;
-        currentData.fStyle = data.fStyle;
-        currentData.fWeight = data.fWeight;
-        currentData.fc = data.fc;
-        currentData.j = data.j;
-        currentData.justifyOffset = data.justifyOffset;
-        currentData.l = data.l;
-        currentData.lh = data.lh;
-        currentData.lineWidths = data.lineWidths;
-        currentData.ls = data.ls;
-        currentData.of = data.of;
-        currentData.s = data.s;
-        currentData.sc = data.sc;
-        currentData.sw = data.sw;
-        currentData.sz = data.sz;
-        currentData.ps = data.ps;
-        currentData.t = data.t;
-        currentData.tr = data.tr;
-        currentData.fillColorAnim = data.fillColorAnim || currentData.fillColorAnim;
-        currentData.strokeColorAnim = data.strokeColorAnim || currentData.strokeColorAnim;
-        currentData.strokeWidthAnim = data.strokeWidthAnim || currentData.strokeWidthAnim;
-        currentData.yOffset = data.yOffset;
-        currentData.finalSize = data.finalSize;
-        currentData.finalLineHeight = data.finalLineHeight;
-        currentData.finalText = data.finalText;*/
+TextProperty.prototype.setCurrentData = function(data){
+    if(!data.__complete) {
+        this.completeTextData(data);
+    }
+    this.currentData = data;
+    this.currentData.boxWidth = this.currentData.boxWidth || this.defaultBoxWidth;
+    this._mdf = true;
 };
 
 TextProperty.prototype.searchProperty = function() {
@@ -4986,7 +5090,8 @@ TextProperty.prototype.getValue = function(_finalValue) {
     if((this.elem.globalData.frameId === this.frameId || !this.effectsSequence.length) && !_finalValue) {
         return;
     }
-    var currentTextValue = this.currentData.t;        
+    var currentValue = this.currentData;
+    var currentIndex = this.keysIndex;
     if(this.lock) {
         this.setCurrentData(this.currentData, currentTextValue);
         return;
@@ -4995,17 +5100,24 @@ TextProperty.prototype.getValue = function(_finalValue) {
     this._mdf = false;
     var multipliedValue;
     var i, len = this.effectsSequence.length;
-    var finalValue = _finalValue || this.currentData;
+    var finalValue = _finalValue || this.data.d.k[this.keysIndex].s;
     for(i = 0; i < len; i += 1) {
-        finalValue = this.effectsSequence[i](finalValue);
+        //Checking if index changed to prevent creating a new object every time the expression updates.
+        if(currentIndex !== this.keysIndex) {
+            finalValue = this.effectsSequence[i](finalValue, finalValue.t);
+        } else {
+            finalValue = this.effectsSequence[i](this.currentData, finalValue.t);
+        }
     }
-    this.setCurrentData(finalValue, currentTextValue);
+    if(currentValue !== finalValue) {
+        this.setCurrentData(finalValue);
+    }
     this.pv = this.v = this.currentData;
     this.lock = false;
     this.frameId = this.elem.globalData.frameId;
 }
 
-TextProperty.prototype.getKeyframeValue = function(currentValue) {
+TextProperty.prototype.getKeyframeValue = function() {
     var textKeys = this.data.d.k, textDocumentData;
     var frameNum = this.elem.comp.renderedFrame;
     var i = 0, len = textKeys.length;
@@ -5017,10 +5129,9 @@ TextProperty.prototype.getKeyframeValue = function(currentValue) {
         i += 1;
     }
     if(this.keysIndex !== i) {
-        currentValue = textDocumentData;
         this.keysIndex = i;
     }
-    return currentValue;
+    return this.data.d.k[this.keysIndex].s;
 };
 
 TextProperty.prototype.buildFinalText = function(text) {
@@ -5089,6 +5200,7 @@ TextProperty.prototype.completeTextData = function(documentData) {
     documentData.finalText = this.buildFinalText(documentData.t);
     documentData.finalLineHeight = documentData.lh;
     var trackingOffset = documentData.tr/1000*documentData.finalSize;
+    var charCode;
     if(documentData.sz){
         var flag = true;
         var boxWidth = documentData.sz[0];
@@ -5102,10 +5214,11 @@ TextProperty.prototype.completeTextData = function(documentData) {
             trackingOffset = documentData.tr/1000*documentData.finalSize;
             var lastSpaceIndex = -1;
             for(i=0;i<len;i+=1){
+                charCode = finalText[i].charCodeAt(0);
                 newLineFlag = false;
                 if(finalText[i] === ' '){
                     lastSpaceIndex = i;
-                }else if(finalText[i].charCodeAt(0) === 13){
+                }else if(charCode === 13 || charCode === 3){
                     lineWidth = 0;
                     newLineFlag = true;
                     currentHeight += documentData.finalLineHeight || documentData.finalSize*1.2;
@@ -5152,9 +5265,10 @@ TextProperty.prototype.completeTextData = function(documentData) {
     for (i = 0;i < len ;i += 1) {
         newLineFlag = false;
         currentChar = documentData.finalText[i];
-        if(currentChar === ' '){
+        charCode = currentChar.charCodeAt(0);
+        if (currentChar === ' '){
             val = '\u00A0';
-        }else if(currentChar.charCodeAt(0) === 13){
+        } else if (charCode === 13 || charCode === 3) {
             uncollapsedSpaces = 0;
             lineWidths.push(lineWidth);
             maxLineWidth = lineWidth > maxLineWidth ? lineWidth : maxLineWidth;
@@ -5284,22 +5398,18 @@ TextProperty.prototype.completeTextData = function(documentData) {
 };
 
 TextProperty.prototype.updateDocumentData = function(newData, index) {
-	index = index === undefined 
-    ? this.keysIndex === -1 
-        ? 0 
-        : this.keysIndex 
-    : index;
-    var dData = this.data.d.k[index].s;
-    for(var s in newData) {
-        dData[s] = newData[s];
-    }
+	index = index === undefined ? this.keysIndex : index;
+    var dData = this.copyData({}, this.data.d.k[index].s);
+    dData = this.copyData(dData, newData);
+    this.data.d.k[index].s = dData;
     this.recalculate(index);
+    this.elem.addDynamicProperty(this);
 };
 
 TextProperty.prototype.recalculate = function(index) {
     var dData = this.data.d.k[index].s;
     dData.__complete = false;
-    this.keysIndex = this.kf ? -1 : 0;
+    this.keysIndex = 0;
     this._isFirstFrame = true;
     this.getValue(dData);
 }
@@ -5307,11 +5417,13 @@ TextProperty.prototype.recalculate = function(index) {
 TextProperty.prototype.canResizeFont = function(_canResize) {
     this.canResize = _canResize;
     this.recalculate(this.keysIndex);
+    this.elem.addDynamicProperty(this);
 };
 
 TextProperty.prototype.setMinimumFontSize = function(_fontValue) {
     this.minimumFontSize = Math.floor(_fontValue) || 1;
     this.recalculate(this.keysIndex);
+    this.elem.addDynamicProperty(this);
 };
 
 var TextSelectorProp = (function(){
@@ -5425,7 +5537,7 @@ var TextSelectorProp = (function(){
             if(newCharsFlag && this.data.r === 2) {
                 this.e.v = this._currentTextLength;
             }
-            var divisor = this.data.r === 2 ? 1 : 100 / this._currentTextLength;
+            var divisor = this.data.r === 2 ? 1 : 100 / this.data.totalChars;
             var o = this.o.v/divisor;
             var s = this.s.v/divisor + o;
             var e = (this.e.v/divisor) + o;
@@ -5735,8 +5847,7 @@ BaseRenderer.prototype.setupGlobalData = function(animData, fontsContainer) {
     this.globalData.fontManager.addFonts(animData.fonts, fontsContainer);
     this.globalData.getAssetData = this.animationItem.getAssetData.bind(this.animationItem);
     this.globalData.getAssetsPath = this.animationItem.getAssetsPath.bind(this.animationItem);
-    this.globalData.elementLoaded = this.animationItem.elementLoaded.bind(this.animationItem);
-    this.globalData.addPendingElement = this.animationItem.addPendingElement.bind(this.animationItem);
+    this.globalData.imageLoader = this.animationItem.imagePreloader;
     this.globalData.frameId = 0;
     this.globalData.frameRate = animData.fr;
     this.globalData.nm = animData.nm;
@@ -5750,13 +5861,14 @@ function SVGRenderer(animationItem, config){
     this.layers = null;
     this.renderedFrame = -1;
     this.svgElement = createNS('svg');
+    var defs = createNS( 'defs');
+    this.svgElement.appendChild(defs);
     var maskElement = createNS('g');
     this.svgElement.appendChild(maskElement);
     this.layerElement = maskElement;
-    var defs = createNS( 'defs');
-    this.svgElement.appendChild(defs);
     this.renderConfig = {
         preserveAspectRatio: (config && config.preserveAspectRatio) || 'xMidYMid meet',
+        imagePreserveAspectRatio: (config && config.imagePreserveAspectRatio) || 'xMidYMid slice',
         progressiveLoad: (config && config.progressiveLoad) || false,
         hideOnTransparent: (config && config.hideOnTransparent === false) ? false : true,
         viewBoxOnly: (config && config.viewBoxOnly) || false,
@@ -5772,6 +5884,7 @@ function SVGRenderer(animationItem, config){
     this.elements = [];
     this.pendingElements = [];
     this.destroyed = false;
+    this.rendererType = 'svg';
 
 }
 
@@ -6174,7 +6287,6 @@ MaskElement.prototype.drawPath = function(pathData,pathNodes,viewData){
     }
     //pathNodes.__renderedString = pathString;
 
-
     if(viewData.lastPath !== pathString){
         var pathShapeValue = '';
         if(viewData.elem){
@@ -6470,7 +6582,7 @@ function RenderableDOMElement() {}
             this.initRenderable();
             this.initRendererElement();
             this.createContainerElements();
-            this.addMasks();
+            this.createRenderableComponents();
             this.createContent();
             this.hide();
         },
@@ -6529,7 +6641,7 @@ function SVGStyleData(data, level) {
 	this.d = '';
 	this.lvl = level;
 	this._mdf = false;
-	this.closed = false;
+	this.closed = data.hd === true;
 	this.pElem = createNS('path');
 	this.msElem = null;
 }
@@ -6629,7 +6741,7 @@ SVGGradientFillStyleData.prototype.setGradientData = function(pathElement,data){
         gfill.appendChild(stop);
         stops.push(stop);
     }
-    pathElement.setAttribute( data.ty === 'gf' ? 'fill':'stroke','url(#'+gradientId+')');
+    pathElement.setAttribute( data.ty === 'gf' ? 'fill':'stroke','url(' + locationHref + '#'+gradientId+')');
     
     this.gf = gfill;
     this.cst = stops;
@@ -6656,7 +6768,7 @@ SVGGradientFillStyleData.prototype.setGradientOpacity = function(data, styleOb){
             opFill.appendChild(stop);
             stops.push(stop);
         }
-        maskElement.setAttribute( data.ty === 'gf' ? 'fill':'stroke','url(#'+opacityId+')');
+        maskElement.setAttribute( data.ty === 'gf' ? 'fill':'stroke','url(' + locationHref + '#'+opacityId+')');
         this.of = opFill;
         this.ms = mask;
         this.ost = stops;
@@ -6761,7 +6873,7 @@ var SVGElementsRenderer = (function() {
 	        } else {
 	            pathStringTransformed = itemData.caches[l];
 	        }
-	        itemData.styles[l].d += pathStringTransformed;
+	        itemData.styles[l].d += styleData.hd === true ? '' : pathStringTransformed;
 	        itemData.styles[l]._mdf = redraw || itemData.styles[l]._mdf;
 	    }
 	}
@@ -6890,6 +7002,62 @@ var SVGElementsRenderer = (function() {
 
 	return ob;
 }())
+function ShapeTransformManager() {
+	this.sequences = {};
+	this.sequenceList = [];
+    this.transform_key_count = 0;
+}
+
+ShapeTransformManager.prototype = {
+	addTransformSequence: function(transforms) {
+		var i, len = transforms.length;
+		var key = '_';
+		for(i = 0; i < len; i += 1) {
+			key += transforms[i].transform.key + '_';
+		}
+		var sequence = this.sequences[key];
+		if(!sequence) {
+			sequence = {
+				transforms: [].concat(transforms),
+				finalTransform: new Matrix(),
+				_mdf: false
+			};
+			this.sequences[key] = sequence;
+			this.sequenceList.push(sequence);
+		}
+		return sequence;
+	},
+	processSequence: function(sequence, isFirstFrame) {
+		var i = 0, len = sequence.transforms.length, _mdf = isFirstFrame;
+		while (i < len && !isFirstFrame) {
+			if (sequence.transforms[i].transform.mProps._mdf) {
+				_mdf = true;
+				break;
+			}
+			i += 1
+		}
+		if (_mdf) {
+			var props;
+			sequence.finalTransform.reset();
+			for (i = len - 1; i >= 0; i -= 1) {
+		        props = sequence.transforms[i].transform.mProps.v.props;
+		        sequence.finalTransform.transform(props[0],props[1],props[2],props[3],props[4],props[5],props[6],props[7],props[8],props[9],props[10],props[11],props[12],props[13],props[14],props[15]);
+			}
+		}
+		sequence._mdf = _mdf;
+		
+	},
+	processSequences: function(isFirstFrame) {
+		var i, len = this.sequenceList.length;
+		for (i = 0; i < len; i += 1) {
+			this.processSequence(this.sequenceList[i], isFirstFrame);
+		}
+
+	},
+	getNewKey: function() {
+		return '_' + this.transform_key_count++;
+	}
+}
 function BaseElement(){
 }
 
@@ -7123,7 +7291,6 @@ SVGBaseElement.prototype = {
         if (this.data.bm !== 0) {
             this.setBlendMode();
         }
-        this.renderableEffectsManager = new SVGEffects(this);
 
     },
     renderElement: function() {
@@ -7145,8 +7312,9 @@ SVGBaseElement.prototype = {
         }
         return this.baseElement;
     },
-    addMasks: function() {
+    createRenderableComponents: function() {
         this.maskManager = new MaskElement(this.data, this, this.globalData);
+        this.renderableEffectsManager = new SVGEffects(this);
     },
     setMatte: function(id) {
         if (!this.matteElement) {
@@ -7196,7 +7364,7 @@ IShapeElement.prototype = {
     ljEnum: {
         '1': 'miter',
         '2': 'round',
-        '3': 'butt'
+        '3': 'bevel'
     },
     searchProcessedElement: function(elem){
         var elements = this.processedElements;
@@ -7240,7 +7408,7 @@ ITextElement.prototype.initElement = function(data,globalData,comp){
     this.initRenderable();
     this.initRendererElement();
     this.createContainerElements();
-    this.addMasks();
+    this.createRenderableComponents();
     this.createContent();
     this.hide();
     this.textAnimator.searchProperties(this.dynamicProperties);
@@ -7318,7 +7486,7 @@ ICompElement.prototype.initElement = function(data,globalData,comp) {
     this.initHierarchy();
     this.initRendererElement();
     this.createContainerElements();
-    this.addMasks();
+    this.createRenderableComponents();
     if(this.data.xt || !globalData.progressiveLoad){
         this.buildAllItems();
     }
@@ -7414,7 +7582,7 @@ IImageElement.prototype.createContent = function(){
     this.innerElem = createNS('image');
     this.innerElem.setAttribute('width',this.assetData.w+"px");
     this.innerElem.setAttribute('height',this.assetData.h+"px");
-    this.innerElem.setAttribute('preserveAspectRatio','xMidYMid slice');
+    this.innerElem.setAttribute('preserveAspectRatio',this.assetData.pr || this.globalData.renderConfig.imagePreserveAspectRatio);
     this.innerElem.setAttributeNS('http://www.w3.org/1999/xlink','href',assetPath);
     
     this.layerElement.appendChild(this.innerElem);
@@ -7467,7 +7635,7 @@ SVGTextElement.prototype.buildTextContents = function(textArray) {
     var i = 0, len = textArray.length;
     var textContents = [], currentTextContent = '';
     while (i < len) {
-        if(textArray[i] === String.fromCharCode(13)) {
+        if(textArray[i] === String.fromCharCode(13) || textArray[i] === String.fromCharCode(3)) {
             textContents.push(currentTextContent);
             currentTextContent = '';
         } else {
@@ -7505,11 +7673,9 @@ SVGTextElement.prototype.buildNewText = function(){
     }
 
     var letters = documentData.l || [];
-    var usesGlyphs = this.globalData.fontManager.chars;
+    var usesGlyphs = !!this.globalData.fontManager.chars;
     len = letters.length;
-    if(!len){
-        return;
-    }
+
     var tSpan;
     var matrixHelper = this.mHelper;
     var shapes, shapeStr = '', singleShape = this.data.singleShape;
@@ -7591,7 +7757,7 @@ SVGTextElement.prototype.buildNewText = function(){
             }
             //
         }
-        if (singleShape) {
+        if (singleShape && tSpan) {
             tSpan.setAttribute('d',shapeStr);
         }
     }
@@ -7743,7 +7909,7 @@ SVGShapeElement.prototype.createStyleElement = function(data, level){
         if (elementData.maskId) {
             this.globalData.defs.appendChild(elementData.ms);
             this.globalData.defs.appendChild(elementData.of);
-            pathElement.setAttribute('mask','url(#' + elementData.maskId + ')');
+            pathElement.setAttribute('mask','url(' + locationHref + '#' + elementData.maskId + ')');
         }
     }
     
@@ -7951,7 +8117,7 @@ SVGShapeElement.prototype.renderShape = function() {
     var animatedContent;
     for(i = 0; i < len; i += 1) {
         animatedContent = this.animatedContents[i];
-        if(this._isFirstFrame || animatedContent.element._isAnimated) {
+        if((this._isFirstFrame || animatedContent.element._isAnimated) && animatedContent.data !== true) {
             animatedContent.fn(animatedContent.data, animatedContent.element, this._isFirstFrame);
         }
     }
@@ -7959,7 +8125,7 @@ SVGShapeElement.prototype.renderShape = function() {
 
 SVGShapeElement.prototype.destroy = function(){
     this.destroyBaseElement();
-    this.shapeData = null;
+    this.shapesData = null;
     this.itemsData = null;
 };
 
@@ -8051,7 +8217,7 @@ SVGStrokeEffect.prototype.initialize = function(){
         this.elem.globalData.defs.appendChild(mask);
         var g = createNS('g');
         g.setAttribute('mask','url(' + locationHref + '#'+id+')');
-        if(elemChildren[0]){
+        while (elemChildren[0]) {
             g.appendChild(elemChildren[0]);
         }
         this.elem.layerElement.appendChild(g);
@@ -8716,7 +8882,6 @@ var AnimationItem = function () {
     this.frameMult = 0;
     this.playSpeed = 1;
     this.playDirection = 1;
-    this.pendingElements = 0;
     this.playCount = 0;
     this.animationData = {};
     this.assets = [];
@@ -8731,7 +8896,9 @@ var AnimationItem = function () {
     this.subframeEnabled = subframeEnabled;
     this.segments = [];
     this._idle = true;
+    this._completedLoop = false;
     this.projectInterface = ProjectInterface();
+    this.imagePreloader = new ImagePreloader();
 };
 
 extendPrototype([BaseEvent], AnimationItem);
@@ -8788,7 +8955,9 @@ AnimationItem.prototype.setParams = function(params) {
         this.fileName = params.path.substr(params.path.lastIndexOf('/')+1);
         this.fileName = this.fileName.substr(0,this.fileName.lastIndexOf('.json'));
 
-        assetLoader.load(params.path, this.configAnimation.bind(this));
+        assetLoader.load(params.path, this.configAnimation.bind(this), function() {
+            this.trigger('data_failed');
+        }.bind(this));
     }
 };
 
@@ -8872,7 +9041,9 @@ AnimationItem.prototype.loadNextSegment = function() {
     this.timeCompleted = segment.time * this.frameRate;
     var segmentPath = this.path+this.fileName+'_' + this.segmentPos + '.json';
     this.segmentPos += 1;
-    assetLoader.load(segmentPath, this.includeLayers.bind(this));
+    assetLoader.load(segmentPath, this.includeLayers.bind(this), function() {
+        this.trigger('data_failed');
+    }.bind(this));
 };
 
 AnimationItem.prototype.loadSegments = function() {
@@ -8883,15 +9054,15 @@ AnimationItem.prototype.loadSegments = function() {
     this.loadNextSegment();
 };
 
+AnimationItem.prototype.imagesLoaded = function() {
+    this.trigger('loaded_images');
+    this.checkLoaded()
+}
+
 AnimationItem.prototype.preloadImages = function() {
-    this.imagePreloader = new ImagePreloader();
     this.imagePreloader.setAssetsPath(this.assetsPath);
     this.imagePreloader.setPath(this.path);
-    this.imagePreloader.loadAssets(this.animationData.assets, function(err) {
-        if(!err) {
-            this.trigger('loaded_images');
-        }
-    }.bind(this));
+    this.imagePreloader.loadAssets(this.animationData.assets, this.imagesLoaded.bind(this));
 }
 
 AnimationItem.prototype.configAnimation = function (animData) {
@@ -8917,41 +9088,28 @@ AnimationItem.prototype.configAnimation = function (animData) {
     this.waitForFontsLoaded();
 };
 
-AnimationItem.prototype.completeData = function() {
-    dataManager.completeData(this.animationData,this.renderer.globalData.fontManager);
-    this.checkLoaded();
-}
-
 AnimationItem.prototype.waitForFontsLoaded = function(){
     if(!this.renderer) {
         return;
     }
-    if(this.renderer.globalData.fontManager.loaded){
-        this.completeData();
+    if(this.renderer.globalData.fontManager.loaded()){
+        this.checkLoaded();
     }else{
         setTimeout(this.waitForFontsLoaded.bind(this),20);
     }
 }
 
-AnimationItem.prototype.addPendingElement = function () {
-    this.pendingElements += 1;
-};
-
-AnimationItem.prototype.elementLoaded = function () {
-    this.pendingElements -= 1;
-    this.checkLoaded();
-};
-
 AnimationItem.prototype.checkLoaded = function () {
-    if (this.pendingElements === 0) {
+    if (!this.isLoaded && this.renderer.globalData.fontManager.loaded() && (this.imagePreloader.loaded() || this.renderer.rendererType !== 'canvas')) {
+        this.isLoaded = true;
+        dataManager.completeData(this.animationData, this.renderer.globalData.fontManager);
         if(expressionsPlugin){
             expressionsPlugin.initExpressions(this);
         }
         this.renderer.initItems();
-        setTimeout(function(){
+        setTimeout(function() {
             this.trigger('DOMLoaded');
-        }.bind(this),0);
-        this.isLoaded = true;
+        }.bind(this), 0);
         this.gotoFrame();
         if(this.autoplay){
             this.play();
@@ -9025,6 +9183,7 @@ AnimationItem.prototype.stop = function (name) {
     }
     this.pause();
     this.playCount = 0;
+    this._completedLoop = false;
     this.setCurrentRawFrameValue(0);
 };
 
@@ -9055,7 +9214,7 @@ AnimationItem.prototype.advanceTime = function (value) {
     // If animation won't loop, it should stop at totalFrames - 1. If it will loop it should complete the last frame and then loop.
     if (nextValue >= this.totalFrames - 1 && this.frameModifier > 0) {
         if (!this.loop || this.playCount === this.loop) {
-            if (!this.checkSegments(nextValue % this.totalFrames)) {
+            if (!this.checkSegments(nextValue >  this.totalFrames ? nextValue % this.totalFrames : 0)) {
                 _isComplete = true;
                 nextValue = this.totalFrames - 1;
             }
@@ -9063,6 +9222,7 @@ AnimationItem.prototype.advanceTime = function (value) {
             this.playCount += 1;
             if (!this.checkSegments(nextValue % this.totalFrames)) {
                 this.setCurrentRawFrameValue(nextValue % this.totalFrames);
+                this._completedLoop = true;
                 this.trigger('loopComplete');
             }
         } else {
@@ -9072,7 +9232,11 @@ AnimationItem.prototype.advanceTime = function (value) {
         if (!this.checkSegments(nextValue % this.totalFrames)) {
             if (this.loop && !(this.playCount-- <= 0 && this.loop !== true)) {
                 this.setCurrentRawFrameValue(this.totalFrames + (nextValue % this.totalFrames));
-                this.trigger('loopComplete');
+                if(!this._completedLoop) {
+                    this._completedLoop = true;
+                } else {
+                    this.trigger('loopComplete');
+                }
             } else {
                 _isComplete = true;
                 nextValue = 0;
@@ -9132,19 +9296,22 @@ AnimationItem.prototype.setSegment = function (init,end) {
     }
 };
 
-AnimationItem.prototype.playSegments = function (arr,forceFlag) {
-    if(typeof arr[0] === 'object'){
+AnimationItem.prototype.playSegments = function (arr, forceFlag) {
+    if (forceFlag) {
+        this.segments.length = 0;
+    }
+    if (typeof arr[0] === 'object') {
         var i, len = arr.length;
-        for(i=0;i<len;i+=1){
+        for (i = 0; i < len; i += 1) {
             this.segments.push(arr[i]);
         }
-    }else{
+    } else {
         this.segments.push(arr);
     }
-    if(forceFlag){
-        this.checkSegments(0);
+    if (this.segments.length) {
+        this.adjustSegment(this.segments.shift(), 0);
     }
-    if(this.isPaused){
+    if (this.isPaused) {
         this.play();
     }
 };
@@ -9153,12 +9320,12 @@ AnimationItem.prototype.resetSegments = function (forceFlag) {
     this.segments.length = 0;
     this.segments.push([this.animationData.ip,this.animationData.op]);
     //this.segments.push([this.animationData.ip*this.frameRate,Math.floor(this.animationData.op - this.animationData.ip+this.animationData.ip*this.frameRate)]);
-    if(forceFlag){
+    if (forceFlag) {
         this.checkSegments(0);
     }
 };
-AnimationItem.prototype.checkSegments = function(offset){
-    if(this.segments.length) {
+AnimationItem.prototype.checkSegments = function(offset) {
+    if (this.segments.length) {
         this.adjustSegment(this.segments.shift(), offset);
         return true;
     }
@@ -9166,10 +9333,11 @@ AnimationItem.prototype.checkSegments = function(offset){
 };
 
 AnimationItem.prototype.destroy = function (name) {
-    if((name && this.name != name) || !this.renderer){
+    if ((name && this.name != name) || !this.renderer) {
         return;
     }
     this.renderer.destroy();
+    this.imagePreloader.destroy();
     this.trigger('destroy');
     this._cbs = null;
     this.onEnterFrame = this.onLoopComplete = this.onComplete = this.onSegmentStart = this.onDestroy = null;
@@ -9286,6 +9454,7 @@ function CanvasRenderer(animationItem, config){
         context: (config && config.context) || null,
         progressiveLoad: (config && config.progressiveLoad) || false,
         preserveAspectRatio: (config && config.preserveAspectRatio) || 'xMidYMid meet',
+        imagePreserveAspectRatio: (config && config.imagePreserveAspectRatio) || 'xMidYMid slice',
         className: (config && config.className) || ''
     };
     this.renderConfig.dpr = (config && config.dpr) || 1;
@@ -9304,6 +9473,7 @@ function CanvasRenderer(animationItem, config){
     this.pendingElements = [];
     this.transformMat = new Matrix();
     this.completeLayers = false;
+    this.rendererType = 'canvas';
 }
 extendPrototype([BaseRenderer],CanvasRenderer);
 
@@ -9609,6 +9779,7 @@ function HybridRenderer(animationItem, config){
     this.renderedFrame = -1;
     this.renderConfig = {
         className: (config && config.className) || '',
+        imagePreserveAspectRatio: (config && config.imagePreserveAspectRatio) || 'xMidYMid slice',
         hideOnTransparent: (config && config.hideOnTransparent === false) ? false : true
     };
     this.globalData = {
@@ -9622,6 +9793,7 @@ function HybridRenderer(animationItem, config){
     this.destroyed = false;
     this.camera = null;
     this.supports3d = true;
+    this.rendererType = 'html';
 
 }
 
@@ -9898,9 +10070,8 @@ HybridRenderer.prototype.searchExtraCompositions = function(assets){
     }
 };
 
-function CVShapeData(element, data) {
-    this.nodes = [];
-    this.trNodes = [];
+function CVShapeData(element, data, styles, transformsManager) {
+    this.styledShapes = [];
     this.tr = [0,0,0,0,0,0];
     var ty = 4;
     if(data.ty == 'rc'){
@@ -9911,8 +10082,17 @@ function CVShapeData(element, data) {
         ty = 7;
     }
     this.sh = ShapePropertyFactory.getShapeProp(element,data,ty,element);
-    this.st = false;
-    this.fl = false;
+    var i , len = styles.length,styledShape;
+    for (i = 0; i < len; i += 1) {
+        if (!styles[i].closed) {
+            styledShape = {
+                transforms: transformsManager.addTransformSequence(styles[i].transforms),
+                trNodes: []
+            }
+            this.styledShapes.push(styledShape);
+            styles[i].elements.push(styledShape);
+        }
+    }
 }
 
 CVShapeData.prototype.setAsAnimated = SVGShapeData.prototype.setAsAnimated;
@@ -9965,7 +10145,7 @@ CVBaseElement.prototype = {
             globalData.canvasContext.globalCompositeOperation = blendModeValue;
         }
     },
-    addMasks: function(){
+    createRenderableComponents: function(){
         this.maskManager = new CVMaskElement(this.data, this);
     },
     hideElement: function(){
@@ -10012,19 +10192,18 @@ CVBaseElement.prototype.show = CVBaseElement.prototype.showElement;
 
 function CVImageElement(data, globalData, comp){
     this.failed = false;
-    this.img = new Image();
     this.assetData = globalData.getAssetData(data.refId);
+    this.img = globalData.imageLoader.getImage(this.assetData);
     this.initElement(data,globalData,comp);
-    this.globalData.addPendingElement();
 }
 extendPrototype([BaseElement, TransformElement, CVBaseElement, HierarchyElement, FrameElement, RenderableElement], CVImageElement);
 
 CVImageElement.prototype.initElement = SVGShapeElement.prototype.initElement;
 CVImageElement.prototype.prepareFrame = IImageElement.prototype.prepareFrame;
 
-CVImageElement.prototype.imageLoaded = function() {
-    this.globalData.elementLoaded();
-    if(this.assetData.w !== this.img.width || this.assetData.h !== this.img.height){
+CVImageElement.prototype.createContent = function(){
+
+    if (this.img.width && (this.assetData.w !== this.img.width || this.assetData.h !== this.img.height)) {
         var canvas = createTag('canvas');
         canvas.width = this.assetData.w;
         canvas.height = this.assetData.h;
@@ -10035,7 +10214,8 @@ CVImageElement.prototype.imageLoaded = function() {
         var imgRel = imgW / imgH;
         var canvasRel = this.assetData.w/this.assetData.h;
         var widthCrop, heightCrop;
-        if(imgRel>canvasRel){
+        var par = this.assetData.pr || this.globalData.renderConfig.imagePreserveAspectRatio;
+        if((imgRel > canvasRel && par === 'xMidYMid slice') || (imgRel < canvasRel && par !== 'xMidYMid slice')) {
             heightCrop = imgH;
             widthCrop = heightCrop*canvasRel;
         } else {
@@ -10045,19 +10225,6 @@ CVImageElement.prototype.imageLoaded = function() {
         ctx.drawImage(this.img,(imgW-widthCrop)/2,(imgH-heightCrop)/2,widthCrop,heightCrop,0,0,this.assetData.w,this.assetData.h);
         this.img = canvas;
     }
-};
-
-CVImageElement.prototype.imageFailed = function() {
-    this.failed = true;
-    this.globalData.elementLoaded();
-};
-
-CVImageElement.prototype.createContent = function(){
-    var img = this.img;
-    img.addEventListener('load', this.imageLoaded.bind(this), false);
-    img.addEventListener('error', this.imageFailed.bind(this), false);
-    var assetPath = this.globalData.getAssetsPath(this.assetData);
-    img.src = assetPath;
 
 };
 
@@ -10167,6 +10334,7 @@ function CVShapeElement(data, globalData, comp) {
     this.prevViewData = [];
     this.shapeModifiers = [];
     this.processedElements = [];
+    this.transformsManager = new ShapeTransformManager();
     this.initElement(data, globalData, comp);
 }
 
@@ -10174,19 +10342,23 @@ extendPrototype([BaseElement,TransformElement,CVBaseElement,IShapeElement,Hierar
 
 CVShapeElement.prototype.initElement = RenderableDOMElement.prototype.initElement;
 
-CVShapeElement.prototype.transformHelper = {opacity:1,mat:new Matrix(),_matMdf:false,_opMdf:false};
+CVShapeElement.prototype.transformHelper = {opacity:1,_opMdf:false};
 
 CVShapeElement.prototype.dashResetter = [];
 
 CVShapeElement.prototype.createContent = function(){
-    this.searchShapes(this.shapesData,this.itemsData,this.prevViewData, true);
+    this.searchShapes(this.shapesData,this.itemsData,this.prevViewData, true, []);
 };
 
-CVShapeElement.prototype.createStyleElement = function(data){
+CVShapeElement.prototype.createStyleElement = function(data, transforms) {
+    var transformsSequence = this.transformsManager.addTransformSequence(transforms);
     var styleElem = {
         data: data,
         type: data.ty,
-        elements: []
+        preTransforms: transformsSequence,
+        transforms: [],
+        elements: [],
+        closed: data.hd === true
     };
     var elementData = {};
     if(data.ty == 'fl' || data.ty == 'st'){
@@ -10194,9 +10366,15 @@ CVShapeElement.prototype.createStyleElement = function(data){
         if(!elementData.c.k){
             styleElem.co = 'rgb('+bm_floor(elementData.c.v[0])+','+bm_floor(elementData.c.v[1])+','+bm_floor(elementData.c.v[2])+')';
         }
+    } else if (data.ty === 'gf' || data.ty === 'gs') {
+        elementData.s = PropertyFactory.getProp(this,data.s,1,null,this);
+        elementData.e = PropertyFactory.getProp(this,data.e,1,null,this);
+        elementData.h = PropertyFactory.getProp(this,data.h||{k:0},0,0.01,this);
+        elementData.a = PropertyFactory.getProp(this,data.a||{k:0},0,degToRads,this);
+        elementData.g = new GradientProperty(this,data.g,this);
     }
     elementData.o = PropertyFactory.getProp(this,data.o,0,0.01,this);
-    if(data.ty == 'st') {
+    if(data.ty == 'st' || data.ty == 'gs') {
         styleElem.lc = this.lcEnum[data.lc] || 'round';
         styleElem.lj = this.ljEnum[data.lj] || 'round';
         if(data.lj == 1) {
@@ -10214,9 +10392,7 @@ CVShapeElement.prototype.createStyleElement = function(data){
                 styleElem.do = elementData.d.dashoffset[0];
             }
         }
-
     } else {
-
         styleElem.r = data.r === 2 ? 'evenodd' : 'nonzero';
     }
     this.stylesList.push(styleElem);
@@ -10235,73 +10411,75 @@ CVShapeElement.prototype.createGroupElement = function(data) {
 CVShapeElement.prototype.createTransformElement = function(data) {
     var elementData = {
         transform : {
-            mat: new Matrix(),
             opacity: 1,
-            _matMdf:false,
             _opMdf:false,
+            key: this.transformsManager.getNewKey(),
             op: PropertyFactory.getProp(this,data.o,0,0.01,this),
             mProps: TransformPropertyFactory.getTransformProperty(this,data,this)
-        },
-        elements: []
+        }
     };
     return elementData;
 };
 
 CVShapeElement.prototype.createShapeElement = function(data) {
-    var elementData = new CVShapeData(this, data);
+    var elementData = new CVShapeData(this, data, this.stylesList, this.transformsManager);
     
     this.shapes.push(elementData);
     this.addShapeToModifiers(elementData);
-    var j, jLen = this.stylesList.length;
-    var hasStrokes = false, hasFills = false;
-    for(j=0;j<jLen;j+=1){
-        if(!this.stylesList[j].closed){
-            this.stylesList[j].elements.push(elementData);
-            if(this.stylesList[j].type === 'st'){
-                hasStrokes = true;
-            }else{
-                hasFills = true;
-            }
-        }
-    }
-    elementData.st = hasStrokes;
-    elementData.fl = hasFills;
     return elementData;
 };
 
-CVShapeElement.prototype.reloadShapes = function(){
+CVShapeElement.prototype.reloadShapes = function() {
     this._isFirstFrame = true;
     var i, len = this.itemsData.length;
     for(i=0;i<len;i+=1){
         this.prevViewData[i] = this.itemsData[i];
     }
-    this.searchShapes(this.shapesData,this.itemsData,this.prevViewData, true);
+    this.searchShapes(this.shapesData,this.itemsData,this.prevViewData, true, []);
     len = this.dynamicProperties.length;
     for(i=0;i<len;i+=1){
         this.dynamicProperties[i].getValue();
     }
     this.renderModifiers();
+    this.transformsManager.processSequences(this._isFirstFrame);
 };
 
-CVShapeElement.prototype.searchShapes = function(arr,itemsData, prevViewData, render){
+CVShapeElement.prototype.addTransformToStyleList = function(transform) {
+    var i, len = this.stylesList.length;
+    for (i = 0; i < len; i += 1) {
+        if(!this.stylesList[i].closed) {
+            this.stylesList[i].transforms.push(transform);
+        }
+    }
+}
+
+CVShapeElement.prototype.closeStyles = function(styles) {
+    var i, len = styles.length, j, jLen;
+    for (i = 0; i < len; i += 1) {
+        styles[i].closed = true;
+    }
+}
+
+CVShapeElement.prototype.searchShapes = function(arr,itemsData, prevViewData, shouldRender, transforms){
     var i, len = arr.length - 1;
     var j, jLen;
-    var ownArrays = [], ownModifiers = [], processedPos, modifier;
+    var ownStyles = [], ownModifiers = [], processedPos, modifier, currentTransform;
+    var ownTransforms = [].concat(transforms);
     for(i=len;i>=0;i-=1){
         processedPos = this.searchProcessedElement(arr[i]);
         if(!processedPos){
-            arr[i]._render = render;
+            arr[i]._shouldRender = shouldRender;
         } else {
             itemsData[i] = prevViewData[processedPos - 1];
         }
-        if(arr[i].ty == 'fl' || arr[i].ty == 'st'){
+        if(arr[i].ty == 'fl' || arr[i].ty == 'st'|| arr[i].ty == 'gf'|| arr[i].ty == 'gs'){
             if(!processedPos){
-                itemsData[i] = this.createStyleElement(arr[i]);
+                itemsData[i] = this.createStyleElement(arr[i], ownTransforms);
             } else {
                 itemsData[i].style.closed = false;
             }
             
-            ownArrays.push(itemsData[i].style);
+            ownStyles.push(itemsData[i].style);
         }else if(arr[i].ty == 'gr'){
             if(!processedPos){
                 itemsData[i] = this.createGroupElement(arr[i]);
@@ -10311,10 +10489,13 @@ CVShapeElement.prototype.searchShapes = function(arr,itemsData, prevViewData, re
                     itemsData[i].prevViewData[j] = itemsData[i].it[j];
                 }
             }
-            this.searchShapes(arr[i].it,itemsData[i].it,itemsData[i].prevViewData, render);
+            this.searchShapes(arr[i].it,itemsData[i].it,itemsData[i].prevViewData, shouldRender, ownTransforms);
         }else if(arr[i].ty == 'tr'){
             if(!processedPos){
-                itemsData[i] = this.createTransformElement(arr[i]);
+                currentTransform = this.createTransformElement(arr[i]);
+                itemsData[i] = currentTransform;
+                ownTransforms.push(currentTransform);
+                this.addTransformToStyleList(currentTransform);
             }
         }else if(arr[i].ty == 'sh' || arr[i].ty == 'rc' || arr[i].ty == 'el' || arr[i].ty == 'sr'){
             if(!processedPos){
@@ -10338,7 +10519,7 @@ CVShapeElement.prototype.searchShapes = function(arr,itemsData, prevViewData, re
                 itemsData[i] = modifier;
                 modifier.init(this,arr,i,itemsData);
                 this.shapeModifiers.push(modifier);
-                render = false;
+                shouldRender = false;
             }else{
                 modifier = itemsData[i];
                 modifier.closed = true;
@@ -10347,10 +10528,7 @@ CVShapeElement.prototype.searchShapes = function(arr,itemsData, prevViewData, re
         }
         this.addProcessedElement(arr[i], i + 1);
     }
-    len = ownArrays.length;
-    for(i=0;i<len;i+=1){
-        ownArrays[i].closed = true;
-    }
+    this.closeStyles(ownStyles);
     len = ownModifiers.length;
     for(i=0;i<len;i+=1){
         ownModifiers[i].closed = true;
@@ -10358,12 +10536,10 @@ CVShapeElement.prototype.searchShapes = function(arr,itemsData, prevViewData, re
 };
 
 CVShapeElement.prototype.renderInnerContent = function() {
-
-    this.transformHelper.mat.reset();
     this.transformHelper.opacity = 1;
-    this.transformHelper._matMdf = false;
     this.transformHelper._opMdf = false;
     this.renderModifiers();
+    this.transformsManager.processSequences(this._isFirstFrame);
     this.renderShape(this.transformHelper,this.shapesData,this.itemsData,true);
 };
 
@@ -10374,13 +10550,6 @@ CVShapeElement.prototype.renderShapeTransform = function(parentTransform, groupT
         groupTransform.opacity *= groupTransform.op.v;
         groupTransform._opMdf = true;
     }
-    if(parentTransform._matMdf || groupTransform.mProps._mdf || this._isFirstFrame) {
-        groupMatrix = groupTransform.mat;
-        groupMatrix.cloneFromProps(groupTransform.mProps.v.props);
-        groupTransform._matMdf = true;
-        props = parentTransform.mat.props;
-        groupMatrix.transform(props[0],props[1],props[2],props[3],props[4],props[5],props[6],props[7],props[8],props[9],props[10],props[11],props[12],props[13],props[14],props[15]);
-    }
 };
 
 CVShapeElement.prototype.drawLayer = function() {
@@ -10389,58 +10558,61 @@ CVShapeElement.prototype.drawLayer = function() {
     for(i=0;i<len;i+=1){
         currentStyle = this.stylesList[i];
         type = currentStyle.type;
-        if((type === 'st' && currentStyle.wi === 0) || !currentStyle.data._render || currentStyle.coOp === 0){
+
+        //Skipping style when
+        //Stroke width equals 0
+        //style should not be rendered (extra unused repeaters)
+        //current opacity equals 0
+        //global opacity equals 0
+        if(((type === 'st' || type === 'gs') && currentStyle.wi === 0) || !currentStyle.data._shouldRender || currentStyle.coOp === 0 || this.globalData.currentGlobalAlpha === 0){
             continue;
         }
         renderer.save();
         elems = currentStyle.elements;
-        if(type === 'st'){
-            ctx.strokeStyle = currentStyle.co;
+        if(type === 'st' || type === 'gs'){
+            ctx.strokeStyle = type === 'st' ? currentStyle.co : currentStyle.grd;
             ctx.lineWidth = currentStyle.wi;
             ctx.lineCap = currentStyle.lc;
             ctx.lineJoin = currentStyle.lj;
             ctx.miterLimit = currentStyle.ml || 0;
-        }else{
-            ctx.fillStyle = currentStyle.co;
+        } else {
+            ctx.fillStyle = type === 'fl' ? currentStyle.co : currentStyle.grd;
         }
         renderer.ctxOpacity(currentStyle.coOp);
-        if(this.globalData.currentGlobalAlpha !== 0) {
-            if(type !== 'st'){
+        if(type !== 'st' && type !== 'gs'){
+            ctx.beginPath();
+        }
+        renderer.ctxTransform(currentStyle.preTransforms.finalTransform.props);
+        jLen = elems.length;
+        for(j=0;j<jLen;j+=1){
+            if(type === 'st' || type === 'gs'){
                 ctx.beginPath();
-            }
-            jLen = elems.length;
-            for(j=0;j<jLen;j+=1){
-                if(type === 'st'){
-                    ctx.beginPath();
-                    if(currentStyle.da){
-                        ctx.setLineDash(currentStyle.da);
-                        ctx.lineDashOffset = currentStyle.do;
-                        this.globalData.isDashed = true;
-                    }else if(this.globalData.isDashed){
-                        ctx.setLineDash(this.dashResetter);
-                        this.globalData.isDashed = false;
-                    }
+                if(currentStyle.da){
+                    ctx.setLineDash(currentStyle.da);
+                    ctx.lineDashOffset = currentStyle.do;
                 }
-                nodes = elems[j].trNodes;
-                kLen = nodes.length;
+            }
+            nodes = elems[j].trNodes;
+            kLen = nodes.length;
 
-                for(k=0;k<kLen;k+=1){
-                    if(nodes[k].t == 'm'){
-                        ctx.moveTo(nodes[k].p[0],nodes[k].p[1]);
-                    }else if(nodes[k].t == 'c'){
-                        ctx.bezierCurveTo(nodes[k].pts[0],nodes[k].pts[1],nodes[k].pts[2],nodes[k].pts[3],nodes[k].pts[4],nodes[k].pts[5]);
-                    }else{
-                        ctx.closePath();
-                    }
-                }
-                if(type === 'st'){
-                    ctx.stroke();
+            for(k=0;k<kLen;k+=1){
+                if(nodes[k].t == 'm'){
+                    ctx.moveTo(nodes[k].p[0],nodes[k].p[1]);
+                }else if(nodes[k].t == 'c'){
+                    ctx.bezierCurveTo(nodes[k].pts[0],nodes[k].pts[1],nodes[k].pts[2],nodes[k].pts[3],nodes[k].pts[4],nodes[k].pts[5]);
+                }else{
+                    ctx.closePath();
                 }
             }
-            if(type !== 'st'){
-                ctx.fill(currentStyle.r);
+            if(type === 'st' || type === 'gs'){
+                ctx.stroke();
+                if(currentStyle.da){
+                    ctx.setLineDash(this.dashResetter);
+                }
             }
-            
+        }
+        if(type !== 'st' && type !== 'gs'){
+            ctx.fill(currentStyle.r);
         }
         renderer.restore();
     }
@@ -10460,6 +10632,8 @@ CVShapeElement.prototype.renderShape = function(parentTransform,items,data,isMai
             this.renderFill(items[i],data[i],groupTransform);
         }else if(items[i].ty == 'st'){
             this.renderStroke(items[i],data[i],groupTransform);
+        }else if(items[i].ty == 'gf' || items[i].ty == 'gs'){
+            this.renderGradientFill(items[i],data[i],groupTransform);
         }else if(items[i].ty == 'gr'){
             this.renderShape(groupTransform,items[i].it,data[i].it);
         }else if(items[i].ty == 'tm'){
@@ -10471,71 +10645,107 @@ CVShapeElement.prototype.renderShape = function(parentTransform,items,data,isMai
     }
     
 };
-CVShapeElement.prototype.renderPath = function(pathData,itemData,groupTransform){
-    var len, i, j,jLen;
-    var redraw = groupTransform._matMdf || itemData.sh._mdf || this._isFirstFrame;
-    if(redraw) {
-        var paths = itemData.sh.paths, groupTransformMat = groupTransform.mat;
-        jLen = pathData._render === false ? 0 : paths._length;
-        var pathStringTransformed = itemData.trNodes;
-        pathStringTransformed.length = 0;
-        for(j=0;j<jLen;j+=1){
+
+CVShapeElement.prototype.renderStyledShape = function(styledShape, shape){
+    if(this._isFirstFrame || shape._mdf || styledShape.transforms._mdf) {
+        var shapeNodes = styledShape.trNodes;
+        var paths = shape.paths;
+        var i, len, j, jLen = paths._length;
+        shapeNodes.length = 0;
+        var groupTransformMat = styledShape.transforms.finalTransform;
+        for (j = 0; j < jLen; j += 1) {
             var pathNodes = paths.shapes[j];
             if(pathNodes && pathNodes.v){
                 len = pathNodes._length;
                 for (i = 1; i < len; i += 1) {
-                    if (i == 1) {
-                        pathStringTransformed.push({
+                    if (i === 1) {
+                        shapeNodes.push({
                             t: 'm',
                             p: groupTransformMat.applyToPointArray(pathNodes.v[0][0], pathNodes.v[0][1], 0)
                         });
                     }
-                    pathStringTransformed.push({
+                    shapeNodes.push({
                         t: 'c',
                         pts: groupTransformMat.applyToTriplePoints(pathNodes.o[i - 1], pathNodes.i[i], pathNodes.v[i])
                     });
                 }
-                if (len == 1) {
-                    pathStringTransformed.push({
+                if (len === 1) {
+                    shapeNodes.push({
                         t: 'm',
                         p: groupTransformMat.applyToPointArray(pathNodes.v[0][0], pathNodes.v[0][1], 0)
                     });
                 }
                 if (pathNodes.c && len) {
-                    pathStringTransformed.push({
+                    shapeNodes.push({
                         t: 'c',
                         pts: groupTransformMat.applyToTriplePoints(pathNodes.o[i - 1], pathNodes.i[0], pathNodes.v[0])
                     });
-                    pathStringTransformed.push({
+                    shapeNodes.push({
                         t: 'z'
                     });
                 }
-                itemData.lStr = pathStringTransformed;
-            }
-
-        }
-
-        if (itemData.st) {
-            for (i = 0; i < 16; i += 1) {
-                itemData.tr[i] = groupTransform.mat.props[i];
             }
         }
-        itemData.trNodes = pathStringTransformed;
+        styledShape.trNodes = shapeNodes;
+    }
+}
 
+CVShapeElement.prototype.renderPath = function(pathData,itemData,groupTransform){
+    if(pathData.hd !== true && pathData._shouldRender) {
+        var i, len = itemData.styledShapes.length;
+        for (i = 0; i < len; i += 1) {
+            this.renderStyledShape(itemData.styledShapes[i], itemData.sh);
+        }
     }
 };
-
-
 
 CVShapeElement.prototype.renderFill = function(styleData,itemData, groupTransform){
     var styleElem = itemData.style;
 
-    if(itemData.c._mdf || this._isFirstFrame){
-        styleElem.co = 'rgb('+bm_floor(itemData.c.v[0])+','+bm_floor(itemData.c.v[1])+','+bm_floor(itemData.c.v[2])+')';
+    if (itemData.c._mdf || this._isFirstFrame) {
+        styleElem.co = 'rgb(' 
+        + bm_floor(itemData.c.v[0]) + ',' 
+        + bm_floor(itemData.c.v[1]) + ',' 
+        + bm_floor(itemData.c.v[2]) + ')';
     }
-    if(itemData.o._mdf || groupTransform._opMdf || this._isFirstFrame){
-        styleElem.coOp = itemData.o.v*groupTransform.opacity;
+    if (itemData.o._mdf || groupTransform._opMdf || this._isFirstFrame) {
+        styleElem.coOp = itemData.o.v * groupTransform.opacity;
     }
+};
+
+CVShapeElement.prototype.renderGradientFill = function(styleData,itemData, groupTransform){
+    var styleElem = itemData.style;
+    if(!styleElem.grd || itemData.g._mdf || itemData.s._mdf || itemData.e._mdf || (styleData.t !== 1 && (itemData.h._mdf || itemData.a._mdf))) {
+        var ctx = this.globalData.canvasContext;
+        var grd;
+        var pt1 = itemData.s.v, pt2 = itemData.e.v;
+        if (styleData.t === 1) {
+            grd = ctx.createLinearGradient(pt1[0], pt1[1], pt2[0], pt2[1]);
+        } else {
+            var rad = Math.sqrt(Math.pow(pt1[0] - pt2[0], 2) + Math.pow(pt1[1] - pt2[1], 2));
+            var ang = Math.atan2(pt2[1] - pt1[1], pt2[0] - pt1[0]);
+
+            var percent = itemData.h.v >= 1 ? 0.99 : itemData.h.v <= -1 ? -0.99: itemData.h.v;
+            var dist = rad * percent;
+            var x = Math.cos(ang + itemData.a.v) * dist + pt1[0];
+            var y = Math.sin(ang + itemData.a.v) * dist + pt1[1];
+            var grd = ctx.createRadialGradient(x, y, 0, pt1[0], pt1[1], rad);
+        }
+
+        var i, len = styleData.g.p;
+        var cValues = itemData.g.c;
+        var opacity = 1;
+
+        for (i = 0; i < len; i += 1){
+            if(itemData.g._hasOpacity && itemData.g._collapsable) {
+                opacity = itemData.g.o[i*2 + 1];
+            }
+            grd.addColorStop(cValues[i * 4] / 100,'rgba('+ cValues[i * 4 + 1] + ',' + cValues[i * 4 + 2] + ','+cValues[i * 4 + 3] + ',' + opacity + ')');
+        }
+        styleElem.grd = grd;
+    }
+    styleElem.coOp = itemData.o.v*groupTransform.opacity;
+    
 };
 
 CVShapeElement.prototype.renderStroke = function(styleData,itemData, groupTransform){
@@ -10770,9 +10980,6 @@ CVTextElement.prototype.renderInnerContent = function(){
             this.globalData.renderer.restore();
         }
     }
-    /*if(this.data.hasMask){
-     this.globalData.renderer.restore(true);
-     }*/
 };
 function CVEffects() {
 
@@ -10841,8 +11048,10 @@ HBaseElement.prototype = {
             this.maskManager = null;
         }
     },
-    addMasks: function(){
+    createRenderableComponents: function(){
         this.maskManager = new MaskElement(this.data, this, this.globalData);
+    },
+    addEffects: function(){
     },
     setMatte: function(){}
 };
@@ -11470,7 +11679,7 @@ HCameraElement.prototype.renderFrame = function(){
             _mdf = this.hierarchy[i].finalTransform.mProp._mdf || _mdf;
         }
     }
-    if(_mdf || (this.p && this.p._mdf) || (this.px && (this.px._mdf || this.py._mdf || this.pz._mdf)) || this.rx._mdf || this.ry._mdf || this.rz._mdf || this.or._mdf || (this.a && this.a._mdf)) {
+    if(_mdf || this.pe._mdf || (this.p && this.p._mdf) || (this.px && (this.px._mdf || this.py._mdf || this.pz._mdf)) || this.rx._mdf || this.ry._mdf || this.rz._mdf || this.or._mdf || (this.a && this.a._mdf)) {
         this.mat.reset();
 
         if(this.hierarchy){
@@ -11483,6 +11692,7 @@ HCameraElement.prototype.renderFrame = function(){
                 console.log(this.mat.props)*/
                 var mTransf = this.hierarchy[i].finalTransform.mProp;
                 this.mat.translate(-mTransf.p.v[0],-mTransf.p.v[1],mTransf.p.v[2]);
+                this.mat.rotateX(-mTransf.or.v[0]).rotateY(-mTransf.or.v[1]).rotateZ(mTransf.or.v[2]);
                 this.mat.rotateX(-mTransf.rx.v).rotateY(-mTransf.ry.v).rotateZ(mTransf.rz.v);
                 this.mat.scale(1/mTransf.s.v[0],1/mTransf.s.v[1],1/mTransf.s.v[2]);
                 this.mat.translate(mTransf.a.v[0],mTransf.a.v[1],mTransf.a.v[2]);
@@ -11513,14 +11723,19 @@ HCameraElement.prototype.renderFrame = function(){
 
         
 
-
-        if(!this._prevMat.equals(this.mat) && this.comp.threeDElements) {
+        var hasMatrixChanged = !this._prevMat.equals(this.mat);
+        if((hasMatrixChanged || this.pe._mdf) && this.comp.threeDElements) {
             len = this.comp.threeDElements.length;
             var comp;
             for(i=0;i<len;i+=1){
                 comp = this.comp.threeDElements[i];
                 if(comp.type === '3d') {
-                    comp.container.style.transform = comp.container.style.webkitTransform = this.mat.toCSS();
+                    if(hasMatrixChanged) {
+                        comp.container.style.transform = comp.container.style.webkitTransform = this.mat.toCSS();
+                    }
+                    if(this.pe._mdf) {
+                        comp.perspectiveElem.style.perspective = comp.perspectiveElem.style.webkitPerspective = this.pe.v+'px';
+                    }
                 }
             }
             this.mat.clone(this._prevMat);
@@ -11546,8 +11761,40 @@ var Expressions = (function(){
 
 
     function initExpressions(animation){
+
+    	var stackCount = 0;
+    	var registers = [];
+
+    	function pushExpression() {
+			stackCount += 1;
+    	}
+
+    	function popExpression() {
+			stackCount -= 1;
+			if (stackCount === 0) {
+				releaseInstances();
+			}
+    	}
+
+    	function registerExpressionProperty(expression) {
+    		if (registers.indexOf(expression) === -1) {
+				registers.push(expression)
+    		}
+    	}
+
+    	function releaseInstances() {
+    		var i, len = registers.length;
+    		for (i = 0; i < len; i += 1) {
+				registers[i].release();
+    		}
+    		registers.length = 0;
+    	}
+
         animation.renderer.compInterface = CompExpressionInterface(animation.renderer);
         animation.renderer.globalData.projectInterface.registerComposition(animation.renderer);
+        animation.renderer.globalData.pushExpression = pushExpression;
+        animation.renderer.globalData.popExpression = popExpression;
+        animation.renderer.globalData.registerExpressionProperty = registerExpressionProperty;
     }
    return ob;
 }());
@@ -11561,24 +11808,7 @@ var ExpressionManager = (function(){
     var window = null;
     var document = null;
 
-    function duplicatePropertyValue(value, mult) {
-        mult = mult || 1;
-
-        if (typeof value === 'number'  || value instanceof Number) {
-            return value * mult;
-        } else if(value.i) {
-            return shape_pool.clone(value);
-        } else {
-            var arr = createTypedArray('float32', value.length);
-            var i, len = value.length;
-            for (i = 0; i < len; i += 1) {
-                arr[i] = value[i] * mult;
-            }
-            return arr;
-        }
-    }
-
-    function isTypeOfArray(arr) {
+    function $bm_isInstanceOfArray(arr) {
         return arr.constructor === Array || arr.constructor === Float32Array;
     }
 
@@ -11591,7 +11821,7 @@ var ExpressionManager = (function(){
         if(tOfA === 'number' || tOfA === 'boolean'  || a instanceof Number ){
             return -a;
         }
-        if(isTypeOfArray(a)){
+        if($bm_isInstanceOfArray(a)){
             var i, lenA = a.length;
             var retArr = [];
             for(i=0;i<lenA;i+=1){
@@ -11600,6 +11830,10 @@ var ExpressionManager = (function(){
             return retArr;
         }
     }
+
+    var easeInBez = BezierFactory.getBezierEasing(0.333,0,.833,.833, 'easeIn').get;
+    var easeOutBez = BezierFactory.getBezierEasing(0.167,0.167,.667,1, 'easeOut').get;
+    var easeInOutBez = BezierFactory.getBezierEasing(.33,0,.667,1, 'easeInOut').get;
 
     function sum(a,b) {
         var tOfA = typeof a;
@@ -11610,17 +11844,17 @@ var ExpressionManager = (function(){
         if(isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
             return a + b;
         }
-        if(isTypeOfArray(a) && isNumerable(tOfB, b)){
+        if($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)){
             a = a.slice(0);
             a[0] = a[0] + b;
             return a;
         }
-        if(isNumerable(tOfA, a) && isTypeOfArray(b)){
+        if(isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)){
             b = b.slice(0);
             b[0] = a + b[0];
             return b;
         }
-        if(isTypeOfArray(a) && isTypeOfArray(b)){
+        if($bm_isInstanceOfArray(a) && $bm_isInstanceOfArray(b)){
             
             var i = 0, lenA = a.length, lenB = b.length;
             var retArr = [];
@@ -11650,17 +11884,17 @@ var ExpressionManager = (function(){
             }
             return a - b;
         }
-        if( isTypeOfArray(a) && isNumerable(tOfB, b)){
+        if( $bm_isInstanceOfArray(a) && isNumerable(tOfB, b)){
             a = a.slice(0);
             a[0] = a[0] - b;
             return a;
         }
-        if(isNumerable(tOfA, a) &&  isTypeOfArray(b)){
+        if(isNumerable(tOfA, a) &&  $bm_isInstanceOfArray(b)){
             b = b.slice(0);
             b[0] = a - b[0];
             return b;
         }
-        if(isTypeOfArray(a) && isTypeOfArray(b)){
+        if($bm_isInstanceOfArray(a) && $bm_isInstanceOfArray(b)){
             var i = 0, lenA = a.length, lenB = b.length;
             var retArr = [];
             while(i<lenA || i < lenB){
@@ -11685,7 +11919,7 @@ var ExpressionManager = (function(){
         }
 
         var i, len;
-        if(isTypeOfArray(a) && isNumerable(tOfB, b)){
+        if($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)){
             len = a.length;
             arr = createTypedArray('float32', len);
             for(i=0;i<len;i+=1){
@@ -11693,7 +11927,7 @@ var ExpressionManager = (function(){
             }
             return arr;
         }
-        if(isNumerable(tOfA, a) && isTypeOfArray(b)){
+        if(isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)){
             len = b.length;
             arr = createTypedArray('float32', len);
             for(i=0;i<len;i+=1){
@@ -11712,7 +11946,7 @@ var ExpressionManager = (function(){
             return a / b;
         }
         var i, len;
-        if(isTypeOfArray(a) && isNumerable(tOfB, b)){
+        if($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)){
             len = a.length;
             arr = createTypedArray('float32', len);
             for(i=0;i<len;i+=1){
@@ -11720,7 +11954,7 @@ var ExpressionManager = (function(){
             }
             return arr;
         }
-        if(isNumerable(tOfA, a) && isTypeOfArray(b)){
+        if(isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)){
             len = b.length;
             arr = createTypedArray('float32', len);
             for(i=0;i<len;i+=1){
@@ -11834,7 +12068,15 @@ var ExpressionManager = (function(){
 
     function linear(t, tMin, tMax, value1, value2){
         if(value1 === undefined || value2 === undefined){
-            return linear(t,0,1,tMin,tMax);
+            value1 = tMin;
+            value2 = tMax;
+            tMin = 0;
+            tMax = 1;
+        }
+        if(tMax < tMin) {
+            var _tMin = tMax;
+            tMax = tMin;
+            tMin = _tMin;
         }
         if(t <= tMin) {
             return value1;
@@ -11887,8 +12129,8 @@ var ExpressionManager = (function(){
         path.setPathData(!!closed, len);
         var arrPlaceholder = [0,0], inVertexPoint, outVertexPoint;
         for(i = 0; i < len; i += 1) {
-            inVertexPoint = inTangents ? inTangents[i] : arrPlaceholder;
-            outVertexPoint = outTangents ? outTangents[i] : arrPlaceholder;
+            inVertexPoint = (inTangents && inTangents[i]) ? inTangents[i] : arrPlaceholder;
+            outVertexPoint = (outTangents && outTangents[i]) ? outTangents[i] : arrPlaceholder;
             path.setTripleAt(points[i][0],points[i][1],outVertexPoint[0] + points[i][0],outVertexPoint[1] + points[i][1],inVertexPoint[0] + points[i][0],inVertexPoint[1] + points[i][1],i,true);
         }
         return path;
@@ -11899,15 +12141,17 @@ var ExpressionManager = (function(){
         var needsVelocity = /velocity(?![\w\d])/.test(val);
         var _needsRandom = val.indexOf('random') !== -1;
         var elemType = elem.data.ty;
-        var transform,content,effect;
+        var transform,$bm_transform,content,effect;
         var thisProperty = property;
+        thisProperty.valueAtTime = thisProperty.getValueAtTime;
         elem.comp.frameDuration = 1/elem.comp.globalData.frameRate;
         var inPoint = elem.data.ip/elem.comp.globalData.frameRate;
         var outPoint = elem.data.op/elem.comp.globalData.frameRate;
         var width = elem.data.sw ? elem.data.sw : 0;
         var height = elem.data.sh ? elem.data.sh : 0;
+        var name = elem.data.nm;
         var loopIn, loop_in, loopOut, loop_out;
-        var toWorld,fromWorld,fromComp,toComp,fromCompToSurface,anchorPoint,thisLayer,thisComp,mask,valueAtTime,velocityAtTime;
+        var toWorld,fromWorld,fromComp,toComp,fromCompToSurface, position, rotation, anchorPoint, scale, thisLayer,thisComp,mask,valueAtTime,velocityAtTime;
         var __expression_functions = [];
         if(data.xf) {
             var i, len = data.xf.length;
@@ -11919,6 +12163,8 @@ var ExpressionManager = (function(){
         var scoped_bm_rt;
         var expression_function = eval('[function _expression_function(){' + val+';scoped_bm_rt=$bm_rt}' + ']')[0];
         var numKeys = property.kf ? data.k.length : 0;
+
+        var active = !this.data || this.data.hd !== true;
 
         var wiggle = function wiggle(freq,amp){
             var i,j, len = this.pv.length ? this.pv.length : 1;
@@ -11987,23 +12233,36 @@ var ExpressionManager = (function(){
         }
 
         function easeOut(t, tMin, tMax, val1, val2){
-            if(val1 === undefined){
-                val1 = tMin;
-                val2 = tMax;
-            } else {
-                t = (t - tMin) / (tMax - tMin);
-            }
-            return -(val2-val1) * t*(t-2) + val1;
+            return applyEase(easeOutBez, t, tMin, tMax, val1, val2);
         }
 
         function easeIn(t, tMin, tMax, val1, val2){
+            return applyEase(easeInBez, t, tMin, tMax, val1, val2);
+        }
+
+        function ease(t, tMin, tMax, val1, val2){
+            return applyEase(easeInOutBez, t, tMin, tMax, val1, val2);
+        }
+
+        function applyEase(fn, t, tMin, tMax, val1, val2) {
             if(val1 === undefined){
                 val1 = tMin;
                 val2 = tMax;
             } else {
                 t = (t - tMin) / (tMax - tMin);
             }
-            return (val2-val1)*t*t + val1;
+            t = t > 1 ? 1 : t < 0 ? 0 : t;
+            var mult = fn(t);
+            if($bm_isInstanceOfArray(val1)) {
+                var i, len = val1.length;
+                var arr = createTypedArray('float32', len);
+                for (i = 0; i < len; i += 1) {
+                    arr[i] = (val2[i] - val1[i]) * mult + val1[i];
+                }
+                return arr;
+            } else {
+                return (val2 - val1) * mult + val1;
+            }
         }
 
         function nearestKey(time){
@@ -12094,12 +12353,34 @@ var ExpressionManager = (function(){
             return elem.sourceRectAtTime();
         }
 
-        var time, velocity, value, textIndex, textTotal, selectorValue;
+        function substring(init, end) {
+            if(typeof value === 'string') {
+                if(end === undefined) {
+                return value.substring(init)
+                }
+                return value.substring(init, end)
+            }
+            return '';
+        }
+
+        function substr(init, end) {
+            if(typeof value === 'string') {
+                if(end === undefined) {
+                return value.substr(init)
+                }
+                return value.substr(init, end)
+            }
+            return '';
+        }
+
+        var time, velocity, value, text, textIndex, textTotal, selectorValue;
         var index = elem.data.ind;
         var hasParent = !!(elem.hierarchy && elem.hierarchy.length);
         var parent;
         var randSeed = Math.floor(Math.random()*1000000);
+        var globalData = elem.globalData;
         function executeExpression(_value) {
+            // globalData.pushExpression();
             value = _value;
             if (_needsRandom) {
                 seedRandom(randSeed);
@@ -12113,6 +12394,7 @@ var ExpressionManager = (function(){
                 selectorValue = this.selectorValue;
             }
             if (!thisLayer) {
+                text = elem.layerInterface.text;
                 thisLayer = elem.layerInterface;
                 thisComp = elem.comp.compInterface;
                 toWorld = thisLayer.toWorld.bind(thisLayer);
@@ -12124,7 +12406,13 @@ var ExpressionManager = (function(){
             }
             if (!transform) {
                 transform = elem.layerInterface("ADBE Transform Group");
-                anchorPoint = transform.anchorPoint;
+                $bm_transform = transform;
+                if(transform) {
+                    anchorPoint = transform.anchorPoint;
+                    /*position = transform.position;
+                    rotation = transform.rotation;
+                    scale = transform.scale;*/
+                }
             }
             
             if (elemType === 4 && !content) {
@@ -12144,10 +12432,12 @@ var ExpressionManager = (function(){
             expression_function();
             this.frameExpressionId = elem.globalData.frameId;
 
+
             //TODO: Check if it's possible to return on ShapeInterface the .v value
             if (scoped_bm_rt.propType === "shape") {
-                scoped_bm_rt = shape_pool.clone(scoped_bm_rt.v);
+                scoped_bm_rt = scoped_bm_rt.v;
             }
+            // globalData.popExpression();
             return scoped_bm_rt;
         }
         return executeExpression;
@@ -12463,6 +12753,9 @@ var ExpressionManager = (function(){
     function ShapeExpressions(){}
     ShapeExpressions.prototype = {
         vertices: function(prop, time){
+            if (this.k) {
+                this.getValue();
+            }
             var shapePath = this.v;
             if(time !== undefined) {
                 shapePath = this.getValueAtTime(time, 0);
@@ -12585,9 +12878,15 @@ var ExpressionManager = (function(){
         }
     }
 
-    TextProperty.prototype.getExpressionValue = function(currentValue) {
-        var newValue = this.calculateExpression(currentValue.t);
-        currentValue.t = newValue;
+    TextProperty.prototype.getExpressionValue = function(currentValue, text) {
+        var newValue = this.calculateExpression(text);
+        if(currentValue.t !== newValue) {
+            var newData = {};
+            this.copyData(newData, currentValue);
+            newData.t = newValue.toString();
+            newData.__complete = false;
+            return newData;
+        }
         return currentValue;
     }
 
@@ -12712,14 +13011,10 @@ var ShapeExpressionInterface = (function(){
         }
         Object.defineProperties(interfaceFunction, {
             'color': {
-                get: function() {
-                    return ExpressionValue(view.c, 1 / view.c.mult, 'color');
-                }
+                get: ExpressionPropertyInterface(view.c)
             },
             'opacity': {
-                get: function() {
-                    return ExpressionValue(view.o, 100);
-                }
+                get: ExpressionPropertyInterface(view.o)
             },
             '_name': { value: shape.nm },
             'mn': { value: shape.mn }
@@ -12747,9 +13042,7 @@ var ShapeExpressionInterface = (function(){
         }
         function addPropertyToDashOb(i) {
             Object.defineProperty(dashOb, shape.d[i].nm, {
-                get: function(){
-                    return ExpressionValue(view.d.dataProps[i].p);
-                }
+                get: ExpressionPropertyInterface(view.d.dataProps[i].p)
             });
         }
         var i, len = shape.d ? shape.d.length : 0;
@@ -12770,19 +13063,13 @@ var ShapeExpressionInterface = (function(){
         }
         Object.defineProperties(interfaceFunction, {
             'color': {
-                get: function() {
-                    return ExpressionValue(view.c, 1 / view.c.mult, 'color');
-                }
+                get: ExpressionPropertyInterface(view.c)
             },
             'opacity': {
-                get: function() {
-                    return ExpressionValue(view.o, 100);
-                }
+                get: ExpressionPropertyInterface(view.o)
             },
             'strokeWidth': {
-                get: function() {
-                    return ExpressionValue(view.w);
-                }
+                get: ExpressionPropertyInterface(view.w)
             },
             'dash': {
                 get: function() {
@@ -12828,19 +13115,13 @@ var ShapeExpressionInterface = (function(){
 
         Object.defineProperties(interfaceFunction, {
             'start': {
-                get: function() {
-                    return ExpressionValue(view.s, 1 / view.s.mult);
-                }
+                get: ExpressionPropertyInterface(view.s)
             },
             'end': {
-                get: function() {
-                    return ExpressionValue(view.e, 1 / view.e.mult);
-                }
+                get: ExpressionPropertyInterface(view.e)
             },
             'offset': {
-                get: function() {
-                    return ExpressionValue(view.o);
-                }
+                get: ExpressionPropertyInterface(view.o)
             },
             '_name': { value: shape.nm }
         });
@@ -12893,39 +13174,25 @@ var ShapeExpressionInterface = (function(){
         }
         Object.defineProperties(interfaceFunction, {
             'opacity': {
-                get: function(){
-                    return ExpressionValue(view.transform.mProps.o, 1/view.transform.mProps.o.mult);
-                }
+                get: ExpressionPropertyInterface(view.transform.mProps.o)
             },
             'position': {
-                get: function(){
-                    return ExpressionValue(view.transform.mProps.p);
-                }
+                get: ExpressionPropertyInterface(view.transform.mProps.p)
             },
             'anchorPoint': {
-                get: function(){
-                    return ExpressionValue(view.transform.mProps.a);
-                }
+                get: ExpressionPropertyInterface(view.transform.mProps.a)
             },
             'scale': {
-                get: function(){
-                    return ExpressionValue(view.transform.mProps.s, 1 / view.transform.mProps.s.mult);
-                }
+                get: ExpressionPropertyInterface(view.transform.mProps.s)
             },
             'rotation': {
-                get: function(){
-                    return ExpressionValue(view.transform.mProps.r, 1 / view.transform.mProps.r.mult);
-                }
+                get: ExpressionPropertyInterface(view.transform.mProps.r)
             },
             'skew': {
-                get: function(){
-                    return ExpressionValue(view.transform.mProps.sk);
-                }
+                get: ExpressionPropertyInterface(view.transform.mProps.sk)
             },
             'skewAxis': {
-                get: function(){
-                    return ExpressionValue(view.transform.mProps.sa);
-                }
+                get: ExpressionPropertyInterface(view.transform.mProps.sa)
             },
             '_name': { value: shape.nm }
         });
@@ -12954,16 +13221,13 @@ var ShapeExpressionInterface = (function(){
                 return interfaceFunction.size;
             }
         }
+
         Object.defineProperties(interfaceFunction, {
             'size': {
-                get: function(){
-                    return ExpressionValue(prop.s);
-                }
+                get: ExpressionPropertyInterface(prop.s)
             },
             'position': {
-                get: function(){
-                    return ExpressionValue(prop.p);
-                }
+                get: ExpressionPropertyInterface(prop.p)
             },
             '_name': { value: shape.nm }
         });
@@ -13015,47 +13279,28 @@ var ShapeExpressionInterface = (function(){
             }
 
         }
+
         Object.defineProperties(interfaceFunction, {
             'position': {
-                get: function() {
-                    return ExpressionValue(prop.p);
-                }
+                get: ExpressionPropertyInterface(prop.p)
             },
             'rotation': {
-                get: function() {
-                    return ExpressionValue(prop.r, 1 / prop.r.mult);
-                }
+                get: ExpressionPropertyInterface(prop.r)
             },
             'points': {
-                get: function() {
-                    return ExpressionValue(prop.pt);
-                }
+                get: ExpressionPropertyInterface(prop.pt)
             },
             'outerRadius': {
-                get: function() {
-                    return ExpressionValue(prop.or);
-                }
+                get: ExpressionPropertyInterface(prop.or)
             },
             'outerRoundness': {
-                get: function(){
-                    return ExpressionValue(prop.os);
-                }
+                get: ExpressionPropertyInterface(prop.os)
             },
             'innerRadius': {
-                get: function(){
-                    if(!prop.ir){
-                        return 0;
-                    }
-                    return ExpressionValue(prop.ir);
-                }
+                get: ExpressionPropertyInterface(prop.ir)
             },
             'innerRoundness': {
-                get: function(){
-                    if(!prop.is){
-                        return 0;
-                    }
-                    return ExpressionValue(prop.is, 1 / prop.is.mult);
-                }
+                get: ExpressionPropertyInterface(prop.is)
             },
             '_name': { value: shape.nm }
         });
@@ -13091,19 +13336,13 @@ var ShapeExpressionInterface = (function(){
         }
         Object.defineProperties(interfaceFunction, {
             'position': {
-                get: function(){
-                    return ExpressionValue(prop.p);
-                }
+                get: ExpressionPropertyInterface(prop.p)
             },
             'roundness': {
-                get: function(){
-                    return ExpressionValue(prop.r);
-                }
+                get: ExpressionPropertyInterface(prop.r)
             },
             'size': {
-                get: function(){
-                    return ExpressionValue(prop.s);
-                }
+                get: ExpressionPropertyInterface(prop.s)
             },
             '_name': { value: shape.nm }
         });
@@ -13131,9 +13370,7 @@ var ShapeExpressionInterface = (function(){
         }
         Object.defineProperties(interfaceFunction, {
             'radius': {
-                get: function() {
-                    return ExpressionValue(prop.rd);
-                }
+                get: ExpressionPropertyInterface(prop.rd)
             },
             '_name': { value: shape.nm }
         });
@@ -13164,14 +13401,10 @@ var ShapeExpressionInterface = (function(){
         }
         Object.defineProperties(interfaceFunction, {
             'copies': {
-                get: function(){
-                    return ExpressionValue(prop.c);
-                }
+                get: ExpressionPropertyInterface(prop.c)
             },
             'offset': {
-                get: function(){
-                    return ExpressionValue(prop.o);
-                }
+                get: ExpressionPropertyInterface(prop.o)
             },
             '_name': { value: shape.nm }
         });
@@ -13393,6 +13626,9 @@ var LayerExpressionInterface = (function (){
         _thisLayerFunction.source = elem.data.refId;
         _thisLayerFunction.height = elem.data.ty === 0 ? elem.data.h : 100;
         _thisLayerFunction.width = elem.data.ty === 0 ? elem.data.w : 100;
+        _thisLayerFunction.inPoint = elem.data.ip/elem.comp.globalData.frameRate;
+        _thisLayerFunction.outPoint = elem.data.op/elem.comp.globalData.frameRate;
+        _thisLayerFunction._name = elem.data.nm;
 
         _thisLayerFunction.registerMaskInterface = _registerMaskInterface;
         _thisLayerFunction.registerEffectsInterface = _registerEffectsInterface;
@@ -13410,15 +13646,17 @@ var CompExpressionInterface = (function (){
                 }
                 i += 1;
             }
-            return {active:false};
+            return null;
+            //return {active:false};
         }
         Object.defineProperty(_thisLayerFunction, "_name", { value:comp.data.nm });
         _thisLayerFunction.layer = _thisLayerFunction;
         _thisLayerFunction.pixelAspect = 1;
-        _thisLayerFunction.height = comp.globalData.compSize.h;
-        _thisLayerFunction.width = comp.globalData.compSize.w;
+        _thisLayerFunction.height = comp.data.h || comp.globalData.compSize.h;
+        _thisLayerFunction.width = comp.data.w || comp.globalData.compSize.w;
         _thisLayerFunction.pixelAspect = 1;
         _thisLayerFunction.frameDuration = 1/comp.globalData.frameRate;
+        _thisLayerFunction.numLayers = comp.layers.length;
         return _thisLayerFunction;
     };
 }());
@@ -13466,36 +13704,31 @@ var TransformExpressionInterface = (function (){
         }
 
         Object.defineProperty(_thisFunction, "rotation", {
-            get: function(){
-                if(transform.r) {
-                    return ExpressionValue(transform.r, 1/degToRads);
-                } else {
-                    return ExpressionValue(transform.rz, 1/degToRads);
-                }
-            }
+            get: ExpressionPropertyInterface(transform.r || transform.rz)
+        });
+
+        Object.defineProperty(_thisFunction, "zRotation", {
+            get: ExpressionPropertyInterface(transform.rz || transform.r)
         });
 
         Object.defineProperty(_thisFunction, "xRotation", {
-            get: function(){
-                    return ExpressionValue(transform.rx, 1/degToRads);
-            }
+            get: ExpressionPropertyInterface(transform.rx)
         });
 
         Object.defineProperty(_thisFunction, "yRotation", {
-            get: function(){
-                    return ExpressionValue(transform.ry, 1/degToRads);
-            }
+            get: ExpressionPropertyInterface(transform.ry)
         });
         Object.defineProperty(_thisFunction, "scale", {
-            get: function () {
-                return ExpressionValue(transform.s, 100);
-            }
+            get: ExpressionPropertyInterface(transform.s)
         });
 
+        if(transform.p) {
+            var _transformFactory = ExpressionPropertyInterface(transform.p);
+        }
         Object.defineProperty(_thisFunction, "position", {
             get: function () {
                 if(transform.p) {
-                    return ExpressionValue(transform.p);
+                    return _transformFactory();
                 } else {
                     return [transform.px.v, transform.py.v, transform.pz ? transform.pz.v : 0];
                 }
@@ -13503,51 +13736,35 @@ var TransformExpressionInterface = (function (){
         });
 
         Object.defineProperty(_thisFunction, "xPosition", {
-            get: function () {
-                return ExpressionValue(transform.px);
-            }
+            get: ExpressionPropertyInterface(transform.px)
         });
 
         Object.defineProperty(_thisFunction, "yPosition", {
-            get: function () {
-                return ExpressionValue(transform.py);
-            }
+            get: ExpressionPropertyInterface(transform.py)
         });
 
         Object.defineProperty(_thisFunction, "zPosition", {
-            get: function () {
-                return ExpressionValue(transform.pz);
-            }
+            get: ExpressionPropertyInterface(transform.pz)
         });
 
         Object.defineProperty(_thisFunction, "anchorPoint", {
-            get: function () {
-                return ExpressionValue(transform.a);
-            }
+            get: ExpressionPropertyInterface(transform.a)
         });
 
         Object.defineProperty(_thisFunction, "opacity", {
-            get: function () {
-                return ExpressionValue(transform.o, 100);
-            }
+            get: ExpressionPropertyInterface(transform.o)
         });
 
         Object.defineProperty(_thisFunction, "skew", {
-            get: function () {
-                return ExpressionValue(transform.sk);
-            }
+            get: ExpressionPropertyInterface(transform.sk)
         });
 
         Object.defineProperty(_thisFunction, "skewAxis", {
-            get: function () {
-                return ExpressionValue(transform.sa);
-            }
+            get: ExpressionPropertyInterface(transform.sa)
         });
 
         Object.defineProperty(_thisFunction, "orientation", {
-            get: function () {
-                return ExpressionValue(transform.or);
-            }
+            get: ExpressionPropertyInterface(transform.or)
         });
 
         return _thisFunction;
@@ -13663,11 +13880,12 @@ var EffectsExpressionInterface = (function (){
     }
 
     function createValueInterface(element, type, elem, propertyGroup){
+        var expressionProperty = ExpressionPropertyInterface(element.p);
         function interfaceFunction(){
             if(type === 10){
                 return elem.comp.compInterface(element.p.v);
             }
-            return ExpressionValue(element.p);
+            return expressionProperty();
         }
 
         if(element.p.setGroupProperty) {
@@ -13718,54 +13936,93 @@ var MaskManagerInterface = (function(){
 	return MaskManager;
 }());
 
-var ExpressionValue = (function() {
-	return function(elementProp, mult, type) {
-        mult = mult || 1;
-        var expressionValue, arrayValue;
+var ExpressionPropertyInterface = (function() {
 
-		if (elementProp.k) {
-            elementProp.getValue();
-        }
-        var i, len, arrValue, val;
-        if (type) {
-        	if(type === 'color') {
-        		len = 4;
-                expressionValue = createTypedArray('float32', len);
-                arrValue = createTypedArray('float32', len);
-		        for (i = 0; i < len; i += 1) {
-		            expressionValue[i] = arrValue[i] = (i < 3) ? elementProp.v[i] * mult : 1;
-		        }
-	        	expressionValue.value = arrValue;
-        	}
-        } else if (elementProp.propType === 'unidimensional'){
-            val = elementProp.v * mult;
-            expressionValue = new Number(val);
-            expressionValue.value = val;
-        } else {
-        	len = elementProp.pv.length;
-            expressionValue = createTypedArray('float32', len);
-            arrValue = createTypedArray('float32', len);
-	        for (i = 0; i < len; i += 1) {
-	            expressionValue[i] = arrValue[i] = elementProp.v[i] * mult;
-	        }
-	        expressionValue.value = arrValue;
-        }
-        
-        expressionValue.numKeys = elementProp.keyframes ? elementProp.keyframes.length : 0;
+    var defaultUnidimensionalValue = {pv:0, v:0, mult: 1}
+    var defaultMultidimensionalValue = {pv:[0,0,0], v:[0,0,0], mult: 1}
+
+    function completeProperty(expressionValue, property) {
+        Object.defineProperty(expressionValue, 'velocity', {
+            get: function(){
+                return property.getVelocityAtTime(property.comp.currentFrame);
+            }
+        });
+        expressionValue.numKeys = property.keyframes ? property.keyframes.length : 0;
         expressionValue.key = function(pos) {
             if (!expressionValue.numKeys) {
                 return 0;
             } else {
-                return elementProp.keyframes[pos-1].t;
+                return property.keyframes[pos-1].t;
             }
         };
-        expressionValue.valueAtTime = elementProp.getValueAtTime;
-        expressionValue.speedAtTime = elementProp.getSpeedAtTime;
-        expressionValue.velocityAtTime = elementProp.getVelocityAtTime;
-        expressionValue.propertyGroup = elementProp.propertyGroup;
-        return expressionValue;
-	};
-}());
+        expressionValue.valueAtTime = property.getValueAtTime;
+        expressionValue.speedAtTime = property.getSpeedAtTime;
+        expressionValue.velocityAtTime = property.getVelocityAtTime;
+        expressionValue.propertyGroup = property.propertyGroup;
+    }
+
+    function UnidimensionalPropertyInterface(property) {
+        if(!property || !('pv' in property)) {
+            property = defaultUnidimensionalValue;
+        }
+        var mult = 1 / property.mult;
+        var val = property.pv * mult;
+        var expressionValue = new Number(val);
+        expressionValue.value = val;
+        completeProperty(expressionValue, property);
+
+        return function() {
+            if (property.k) {
+                property.getValue();
+            }
+            val = property.v * mult;
+            if(expressionValue.value !== val) {
+                expressionValue = new Number(val);
+                expressionValue.value = val;
+                completeProperty(expressionValue, property);
+            }
+            return expressionValue;
+        }
+    }
+
+    function MultidimensionalPropertyInterface(property) {
+        if(!property || !('pv' in property)) {
+            property = defaultMultidimensionalValue;
+        }
+        var mult = 1 / property.mult;
+        var len = property.pv.length;
+        var expressionValue = createTypedArray('float32', len);
+        var arrValue = createTypedArray('float32', len);
+        expressionValue.value = arrValue;
+        completeProperty(expressionValue, property);
+
+        return function() {
+            if (property.k) {
+                property.getValue();
+            }
+            for (var i = 0; i < len; i += 1) {
+                expressionValue[i] = arrValue[i] = property.v[i] * mult;
+            }
+            return expressionValue;
+        }
+    }
+
+    //TODO: try to avoid using this getter
+    function defaultGetter() {
+        return defaultUnidimensionalValue;
+    }
+    
+    return function(property) {
+        if(!property) {
+            return defaultGetter;
+        } else if (property.propType === 'unidimensional') {
+            return UnidimensionalPropertyInterface(property);
+        } else {
+            return MultidimensionalPropertyInterface(property);
+        }
+    }
+}())
+
 function SliderEffect(data,elem, container){
     this.p = PropertyFactory.getProp(elem,data.v,0,0,container);
 }
@@ -13946,7 +14203,7 @@ GroupEffect.prototype.init = function(data,element){
     lottiejs.unfreeze = animationManager.unfreeze;
     lottiejs.getRegisteredAnimations = animationManager.getRegisteredAnimations;
     lottiejs.__getFactory = getFactory;
-    lottiejs.version = '5.1.16';
+    lottiejs.version = '5.4.1';
 
     function checkReady() {
         if (document.readyState === "complete") {
@@ -13978,4 +14235,4 @@ GroupEffect.prototype.init = function(data,element){
     }
     var readyStateCheckInterval = setInterval(checkReady, 100);
     return lottiejs;
-}));
+}));
