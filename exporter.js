@@ -7,7 +7,19 @@ const RotateStr = !app.activeDocument ? "ks:rotate" :
 // returns filenames which will be written by the export function
 function getFilenames(userSelectedFileUrl)
 {
-    return [ userSelectedFileUrl ];
+    let fileArray = [ userSelectedFileUrl ];
+    // add image assets
+    let assets = getImageAssets();
+    if (assets.length > 0) {
+        let dirurl = new URL("images", userSelectedFileUrl);
+        fileArray.push(dirurl);
+        for (let asset of assets) {
+            let filename = asset.u + asset.p;
+            let url = new URL(filename, userSelectedFileUrl);
+            fileArray.push(url);
+        }
+    }
+    return fileArray;
 }
 
 let globalLayerIndex = 1;
@@ -752,21 +764,42 @@ const blendingModes = [
     "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity"
 ];
 
-function appendLayer(layersArray, element)
+function multiplyProperty(element, prop, mult)
+{
+    if (element.timeline().hasKeyframes(prop)) {
+        let kfs = element.timeline().getKeyframes(prop);
+        for (let kf of kfs) {
+            element.timeline().setKeyframe(prop, kf.time, mult * kf.value, kf.easing);
+        }
+    } else {
+        element.setProperty(prop, mult * element.getProperty(prop));
+    }
+}
+
+function appendLayer(layersArray, element, assets)
 {
     if (element.getProperty("display") == "none") {
         return;
     }
-
-    let shapes = [];
-    if (element.tagName == "g" || element.tagName == "a" || element.tagName == "svg") {
-        // add children
-        for (let child of element.children) {
-            addShape(shapes, child, false);
+    let imageAsset;
+    if (element.tagName == "image") {
+        let href = element.getProperty("href");
+        if (href == "") {
+            return;
         }
-    } else {
-        // top level rect, ellipse, text..
-        addShape(shapes, element, true);
+        imageAsset = assets.find(function(item) { return item.orighref == href; });
+        if (!imageAsset) {
+            return;
+        }
+        // Lottie doesn't support width and height, so adjust scale and anchor to get them supported
+        let iw = element.getProperty("width");
+        let iws = iw / imageAsset.w;
+        let ih = element.getProperty("height");
+        let ihs = ih / imageAsset.h;
+        multiplyProperty(element, "ks:scaleX", iws);
+        multiplyProperty(element, "ks:scaleY", ihs);
+        multiplyProperty(element, "ks:anchorX", 1/iws);
+        multiplyProperty(element, "ks:anchorY", 1/ihs);
     }
 
     let transform = {
@@ -784,17 +817,37 @@ function appendLayer(layersArray, element)
     let obj = {
         ddd: 0,
         ind: globalLayerIndex,
-        ty: 4,
         nm: id || "Layer "+globalLayerIndex,
         ks: transform,
         ao: element.getProperty("ks:motion-rotation") == "auto" ? 1 : 0,
-        shapes: shapes,
         ip: 0,
         op: globalEndFrame > 0 ? globalEndFrame : 1,
         st: 0, // start time
         bm: blend,
         sr: 1 // layer time stretch
     }
+
+    if (element.tagName == "g" || element.tagName == "a" || element.tagName == "svg") {
+        // add children
+        let shapes = [];
+        for (let child of element.children) {
+            addShape(shapes, child, false);
+        }
+        obj.ty = 4; // shape layer
+        obj.shapes = shapes;
+
+    } else if (element.tagName == "image") {
+        obj.ty = 2; // image layer
+        obj.refId = imageAsset.id;
+
+    } else {
+        // top level rect, ellipse, text, path, g
+        let shapes = [];
+        addShape(shapes, element, true);
+        obj.ty = 4; // shape layer
+        obj.shapes = shapes;
+    }
+
     if (id !== null && id !== "") {
         obj.ln = id.replace(/ /g, '-');
     }
@@ -870,7 +923,45 @@ function calculateEndTime(element)
     }
 }
 
-function createJSON()
+function getImageAssets()
+{
+    let assetArray = [];
+    for (let child of app.activeDocument.documentElement.children) {
+        if (child.tagName == "image" && child.getProperty("display") != "none") {
+            let href = child.getProperty("href");
+            if (!assetArray.find(function(item) { return item.orighref == href })) {
+                let imgdata = app.activeDocument.getMediaData(href);
+                let imginfo = app.activeDocument.getMediaInfo(href);
+                let filename = href;
+                if (filename.startsWith("data:embedded")) {
+                    filename += imginfo.mimetype == "image/png" ? ".png" : ".jpg";
+                }
+                filename = filename.replace(/file:|data:/, "");
+                let lastDashPos = filename.lastIndexOf("/");
+                if (lastDashPos >= 0) {
+                    filename = filename.substring(lastDashPos+1);
+                }
+                let imgid = filename.replace(/\.png|\.jpg|\.jpeg/, "");
+                if (imgdata && imginfo) {
+                    assetArray.push({
+                        id: imgid,
+                        w: imginfo.width,
+                        h: imginfo.height,
+                        u: "images/",
+                        p: filename,
+                        orighref: href
+                    });
+                } else {
+                    // clear invalid image hrefs
+                    child.setProperty("href", "");
+                }
+            }
+        }
+    }
+    return assetArray;
+}
+
+function createJsonAndCopyAssets(userSelectedFileUrl)
 {
     let root = app.activeDocument.documentElement;
 
@@ -903,9 +994,25 @@ function createJSON()
     let width = viewValues[2];
     let height = viewValues[3];
 
+    let assets = getImageAssets();
+
     let layers = [];
     for (let child of root.children) {
-        appendLayer(layers, child);
+        appendLayer(layers, child, assets);
+    }
+
+    // write out assets
+    if (assets.length > 0) {
+        let dirurl = new URL("images", userSelectedFileUrl);
+        app.fs.mkdirSync(dirurl);
+        for (let asset of assets) {
+            let href = asset.orighref;
+            asset.orighref = undefined;
+            let imgdata = app.activeDocument.getMediaData(href);
+            let filename = asset.u + asset.p;
+            let url = new URL(filename, userSelectedFileUrl);
+            app.fs.writeFileSync(url, imgdata);
+        }
     }
 
     let json = {
@@ -916,16 +1023,17 @@ function createJSON()
         w: round(width),
         h: round(height),
         ddd: 0,
-        assets: [],
+        assets: assets,
         layers:  layers
     };
+
     return json;
 }
 
 // main function for exporting
 function exportAnimation(userSelectedFileUrl)
 {
-    let json = createJSON();
+    let json = createJsonAndCopyAssets(userSelectedFileUrl);
     // write to a file
     app.fs.writeFileSync(userSelectedFileUrl, JSON.stringify(json));
 }
@@ -936,7 +1044,7 @@ function previewAnimation(folderUrl)
     app.fs.copyFileSync(app.extension.getURL("lottie.js"), new URL("lottie.js", folderUrl));
 
     // create Lottie json
-    let json = createJSON();
+    let json = createJsonAndCopyAssets(folderUrl);
 
     // autoplay if there are frames
     let aplay = globalPlayRange == 0 ? "false" : "true";
