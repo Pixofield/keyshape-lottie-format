@@ -1054,6 +1054,7 @@ function previewAnimation(folderUrl)
 `<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <title>Lottie-web Preview</title>
   <script src="lottie.js"></script>
   <style>svg { position: absolute; }</style>
