@@ -11,9 +11,14 @@ function getFilenames(userSelectedFileUrl)
     // add image assets
     let assets = getImageAssets();
     if (assets.length > 0) {
-        let dirurl = new URL("images", userSelectedFileUrl);
-        fileArray.push(dirurl);
         for (let asset of assets) {
+            if (asset.e == 1) { // skip embedded images
+                continue;
+            }
+            if (fileArray.length == 1) {
+                let dirurl = new URL("images", userSelectedFileUrl);
+                fileArray.push(dirurl);
+            }
             let filename = asset.u + asset.p;
             let url = new URL(filename, userSelectedFileUrl);
             fileArray.push(url);
@@ -932,25 +937,39 @@ function getImageAssets()
             if (!assetArray.find(function(item) { return item.orighref == href })) {
                 let imgdata = app.activeDocument.getMediaData(href);
                 let imginfo = app.activeDocument.getMediaInfo(href);
-                let filename = href;
-                if (filename.startsWith("data:embedded")) {
-                    filename += imginfo.mimetype == "image/png" ? ".png" : ".jpg";
-                }
-                filename = filename.replace(/file:|data:/, "");
-                let lastDashPos = filename.lastIndexOf("/");
-                if (lastDashPos >= 0) {
-                    filename = filename.substring(lastDashPos+1);
-                }
-                let imgid = filename.replace(/\.png|\.jpg|\.jpeg/, "");
                 if (imgdata && imginfo) {
-                    assetArray.push({
-                        id: imgid,
-                        w: imginfo.width,
-                        h: imginfo.height,
-                        u: "images/",
-                        p: filename,
-                        orighref: href
-                    });
+                    let filename = href;
+                    let isEmbeddedImage = false;
+                    if (filename.startsWith("data:embedded")) {
+                        isEmbeddedImage = true;
+                        filename += imginfo.mimetype == "image/png" ? ".png" : ".jpg";
+                    }
+                    filename = filename.replace(/file:|data:/, "");
+                    let lastDashPos = filename.lastIndexOf("/");
+                    if (lastDashPos >= 0) {
+                        filename = filename.substring(lastDashPos+1);
+                    }
+                    let imgid = filename.replace(/\.png|\.jpg|\.jpeg/, "");
+                    if (isEmbeddedImage) {
+                        assetArray.push({
+                            id: imgid,
+                            w: imginfo.width,
+                            h: imginfo.height,
+                            u: "",
+                            p: "data:"+imginfo.mimetype+";base64,"+base64encode(imgdata),
+                            orighref: href,
+                            e: 1
+                        });
+                    } else {
+                        assetArray.push({
+                            id: imgid,
+                            w: imginfo.width,
+                            h: imginfo.height,
+                            u: "images/",
+                            p: filename,
+                            orighref: href
+                        });
+                    }
                 } else {
                     // clear invalid image hrefs
                     child.setProperty("href", "");
@@ -1003,9 +1022,16 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
 
     // write out assets
     if (assets.length > 0) {
-        let dirurl = new URL("images", userSelectedFileUrl);
-        app.fs.mkdirSync(dirurl);
+        let hasCreatedDir = false;
         for (let asset of assets) {
+            if (asset.e == 1) { // skip embedded images
+                continue;
+            }
+            if (!hasCreatedDir) {
+                hasCreatedDir = true;
+                let dirurl = new URL("images", userSelectedFileUrl);
+                app.fs.mkdirSync(dirurl);
+            }
             let href = asset.orighref;
             asset.orighref = undefined;
             let imgdata = app.activeDocument.getMediaData(href);
@@ -1082,4 +1108,40 @@ bodymovin.loadAnimation({
     app.fs.writeFileSync(outfile, html);
 
     return outfile;
+}
+
+// public domain base64 encoder from https://simplycalc.com/base64-source.php
+function base64encode(data)
+{
+    var b64x = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"   // base64 dictionary
+    var b64pad = '='
+    var len = data.length;
+
+    var dst = ""
+    var i
+
+    for (i = 0; i <= len - 3; i += 3)
+    {
+        dst += b64x.charAt(data[i] >>> 2)
+        dst += b64x.charAt(((data[i] & 3) << 4) | (data[i+1] >>> 4))
+        dst += b64x.charAt(((data[i+1] & 15) << 2) | (data[i+2] >>> 6))
+        dst += b64x.charAt(data[i+2] & 63)
+    }
+
+    if (len % 3 == 2)
+    {
+        dst += b64x.charAt(data[i] >>> 2)
+        dst += b64x.charAt(((data[i] & 3) << 4) | (data[i+1] >>> 4))
+        dst += b64x.charAt(((data[i+1] & 15) << 2))
+        dst += b64pad
+    }
+    else if (len % 3 == 1)
+    {
+        dst += b64x.charAt(data[i] >>> 2)
+        dst += b64x.charAt(((data[i] & 3) << 4))
+        dst += b64pad
+        dst += b64pad
+    }
+
+    return dst;
 }
