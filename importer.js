@@ -969,8 +969,16 @@ function readLayers(parentElement, layers)
             copyOpacity(layer.ks, image);
             elem.append(image);
             if (!isUndefined(layer.refId) && globalAssets[layer.refId]) {
-                let fullPath = globalAssets[layer.refId].u + globalAssets[layer.refId].p;
-                image.setProperty("href", fullPath);
+                if (globalAssets[layer.refId].e == 1) { // embedded
+                    try {
+                        image.setProperty("href", globalAssets[layer.refId].p);
+                    } catch (e) {
+                        // invalid image -- just leave it blank and keep going
+                    }
+                } else { // not embedded
+                    let fullPath = globalAssets[layer.refId].u + globalAssets[layer.refId].p;
+                    image.setProperty("href", fullPath);
+                }
                 image.setProperty("width", globalAssets[layer.refId].w);
                 image.setProperty("height", globalAssets[layer.refId].h);
             }
