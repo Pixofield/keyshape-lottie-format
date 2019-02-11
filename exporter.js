@@ -651,7 +651,7 @@ function pushPathShapes(shapesArray, element)
 function hasTime(kfs, time)
 {
     // don't check last keyframe, so that easing can get copied to it
-    for (let i = 0; i < kfs.length-1; ++i) {
+    for (let i = 0; i < kfs.length; ++i) {
         let kf = kfs[i];
         if (kf.time == time) {
             return true;
