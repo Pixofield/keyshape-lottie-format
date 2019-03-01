@@ -1,9 +1,6 @@
 
 // Keyshape Importer for Bodymovin / Lottie
 
-const RotateStr = !app.activeDocument ? "ks:rotate" :
-    app.activeDocument.documentElement.getProperty("ks:rotate") != null ? "ks:rotate" : "ks:rotation";
-
 // gets a filename URL, byte array and string to check if this importer can read the file
 function doRecognize(filenameUrl, arrray, str)
 {
@@ -330,7 +327,7 @@ function copyTransform(obj, element, readMotionPath = true)
         copyPropertyXY(obj.s, element, "ks:scale", 0.01, 0, 0);
     }
     if (obj.r) {
-        copyProperty(obj.r, element, RotateStr, 1);
+        copyProperty(obj.r, element, "ks:rotation", 1);
     }
     if (obj.sk) {
         let prop = "ks:skewX";
@@ -920,7 +917,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
             if (shape.p) {
                 copyPropertyXY(shape.p, star, "ks:position", 1, 0, 0);
             }
-            copyProperty(shape.r, star, RotateStr, 1);
+            copyProperty(shape.r, star, "ks:rotation", 1);
             if (shape.sy == 2) {
                 star.setProperty("d", createPolygon(shape));
             } else {

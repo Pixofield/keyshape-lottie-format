@@ -1,9 +1,6 @@
 
 // Keyshape Exporter for Bodymovin / Lottie
 
-const RotateStr = !app.activeDocument ? "ks:rotate" :
-    app.activeDocument.documentElement.getProperty("ks:rotate") != null ? "ks:rotate" : "ks:rotation";
-
 // returns filenames which will be written by the export function
 function getFilenames(userSelectedFileUrl)
 {
@@ -335,7 +332,7 @@ function pushTransformAndOpacity(array, element, topLevel)
         "p": valueOrAnimationMultiDim(element, 2, "ks:positionX", "ks:positionY", 0, function(val) { return +val; }),
         "a": valueOrAnimationMultiDim(element, 2, "ks:anchorX", "ks:anchorY", 0, function(val) { return -val; }),
         "s": valueOrAnimationMultiDim(element, 2, "ks:scaleX", "ks:scaleY", 100, function(val) { return val*100; }),
-        "r": valueOrAnimation(element, RotateStr, 0, function(val) { return +val; }),
+        "r": valueOrAnimation(element, "ks:rotation", 0, function(val) { return +val; }),
         "o": valueOrAnimation(element, "opacity", 1, function(val) { return val*100; }),
         "sk": valueOrAnimation(element, skewProp, 1, skewFunc),
         "sa": {
@@ -826,7 +823,7 @@ function appendLayer(layersArray, element, assets)
     }
     transform.a = valueOrAnimationMultiDim(element, 3, "ks:anchorX", "ks:anchorY", 0, function(val) { return -val; });
     transform.s = valueOrAnimationMultiDim(element, 3, "ks:scaleX", "ks:scaleY", 100, function(val) { return val*100; });
-    transform.r = valueOrAnimation(element, RotateStr, 0, function(val) { return +val; });
+    transform.r = valueOrAnimation(element, "ks:rotation", 0, function(val) { return +val; });
     transform.o = valueOrAnimation(element, "opacity", 1, function(val) { return val*100; });
 
     let blend = blendingModes.indexOf(element.getProperty("mix-blend-mode"));
