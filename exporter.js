@@ -121,6 +121,10 @@ function valueOrAnimation(element, prop, defaultValue, processor)
 
 function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, processor)
 {
+    if (element.timeline().isSeparated(propX) || propX == "width") {
+        addMissingKeyframes(element, propX, propY);
+        addMissingKeyframes(element, propY, propX);
+    }
     element.timeline().simplifyEasings(propX);
     element.timeline().simplifyEasings(propY);
     let kfsx = element.timeline().getKeyframes(propX);
@@ -145,7 +149,9 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
         let valy = processor ? processor(kfy.value) : kfy.value;
         let val2x = processor ? processor(kf2x.value) : kf2x.value;
         let val2y = processor ? processor(kf2y.value) : kf2y.value;
-        let ease = convertEasing(kfx.easing);
+        let easex = convertEasing(kfx.easing);
+        let easey = convertEasing(kfy.easing);
+        // NOTE: only stepped x is supported and it affects y
         let h;
         if (kfx.easing.startsWith("steps(")) {
             h = 1;
@@ -155,9 +161,15 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
         valy = round(valy);
         val2x = round(val2x);
         val2y = round(val2y);
+        let singleEase = easex[0] == easey[0] && easex[1] == easey[1] &&
+                         easex[2] == easey[2] && easex[3] == easey[3];
         let span = {
-            i: { x: [ ease[2] ], y: [ ease[3] ] },
-            o: { x: [ ease[0] ], y: [ ease[1] ] },
+            i: {
+                x: singleEase ? [ easex[2] ] : [ easex[2], easey[2] ],
+                y: singleEase ? [ easex[3] ] : [ easex[3], easey[3] ] },
+            o: {
+                x: singleEase ? [ easex[0] ] : [ easex[0], easey[0] ],
+                y: singleEase ? [ easex[1] ] : [ easex[1], easey[1] ] },
             t: toRoundFrame(kfx.time),
             s: dim == 3 ? [ valx, valy, defaultValue ] : [ valx, valy ]
         };
@@ -316,6 +328,8 @@ function pushTransformAndOpacity(array, element, topLevel)
         skewProp = "ks:skewY";
         skewFunc = function(val) { return +val; };
     }
+    // separate position so that motion path is supported
+    element.timeline().setSeparated("ks:positionX", true);
     let transform = {
         "ty": "tr",
         "p": valueOrAnimationMultiDim(element, 2, "ks:positionX", "ks:positionY", 0, function(val) { return +val; }),
@@ -675,9 +689,8 @@ function addMissingKeyframes(element, prop, destProp)
         if (hasTime(destKfs, time)) {
             continue;
         }
-        // copy time and easing
-        element.timeline().setKeyframe(destProp, time,
-                                   element.timeline().getAnimatedValue(destProp, time), kf.easing);
+        // add extra keyframes
+        element.timeline().addKeyframe(destProp, time);
     }
 }
 
@@ -711,10 +724,6 @@ function addShape(shapesArray, element, topLevel)
         let rectshape = {};
         rectshape.d = 1;
         rectshape.ty = "rc";
-        let width = element.getProperty("width") || 0;
-        let height = element.getProperty("height") || 0;
-        addMissingKeyframes(element, "width", "height");
-        addMissingKeyframes(element, "height", "width");
         rectshape.s = valueOrAnimationMultiDim(element, 2, "width", "height", 0, function(val) { return +val; });
         // rect size is relative to center, so move position
         rectshape.p = valueOrAnimationMultiDim(element, 2, "width", "height", 0, function(val) { return val/2; });
@@ -807,13 +816,18 @@ function appendLayer(layersArray, element, assets)
         multiplyProperty(element, "ks:anchorY", 1/ihs);
     }
 
-    let transform = {
-        "p": valueOrMotionPath(element),
-        "a": valueOrAnimationMultiDim(element, 3, "ks:anchorX", "ks:anchorY", 0, function(val) { return -val; }),
-        "s": valueOrAnimationMultiDim(element, 3, "ks:scaleX", "ks:scaleY", 100, function(val) { return val*100; }),
-        "r": valueOrAnimation(element, RotateStr, 0, function(val) { return +val; }),
-        "o": valueOrAnimation(element, "opacity", 1, function(val) { return val*100; })
-    };
+    let transform = {};
+    if (element.timeline().isSeparated("ks:positionX")) {
+        transform.p = { s: true };
+        transform.p.x = valueOrAnimation(element, "ks:positionX", 0, function(val) { return +val; });
+        transform.p.y = valueOrAnimation(element, "ks:positionY", 0, function(val) { return +val; });
+    } else {
+        transform.p = valueOrMotionPath(element);
+    }
+    transform.a = valueOrAnimationMultiDim(element, 3, "ks:anchorX", "ks:anchorY", 0, function(val) { return -val; });
+    transform.s = valueOrAnimationMultiDim(element, 3, "ks:scaleX", "ks:scaleY", 100, function(val) { return val*100; });
+    transform.r = valueOrAnimation(element, RotateStr, 0, function(val) { return +val; });
+    transform.o = valueOrAnimation(element, "opacity", 1, function(val) { return val*100; });
 
     let blend = blendingModes.indexOf(element.getProperty("mix-blend-mode"));
     if (blend < 0) { blend = 0; }

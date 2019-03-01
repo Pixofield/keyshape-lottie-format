@@ -44,7 +44,7 @@ Lottie animations are exported to a single JSON file.
 Exporting has few limitations:
 
  * only top level bitmap images are supported (without width and height animations)
- * blending, curved motion paths and orient along path are supported only at the top level objects
+ * blending and orient along path are supported only at the top level objects
  * stroke dashing supports only one dash and gap
  * gradients don't support the alpha component
  * stroke and fill animations don't support "none" or gradient values

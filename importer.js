@@ -119,7 +119,7 @@ function arraysEqual(a1, a2)
     return true;
 }
 
-function convertEasing(objk, prevk)
+function convertEasing(objk, prevk, inx = 0)
 {
     if (objk.h) {
         if (prevk && prevk.e && arraysEqual(objk.s, prevk.e)) {
@@ -127,12 +127,16 @@ function convertEasing(objk, prevk)
         }
         return "steps(1, start)";
     }
-    let i = objk.i || { x: 0.833, y: 0.833 };
-    let o = objk.o || { x: 0.167, y: 0.167 };
-    if (i.x == i.y && o.x == o.y) {
+    let i = objk.i || { x: [ 0.833 ], y: [ 0.833 ] };
+    let o = objk.o || { x: [ 0.167 ], y: [ 0.167 ] };
+    let ix = i.x.length > inx ? i.x[inx] : i.x[0];
+    let iy = i.y.length > inx ? i.y[inx] : i.y[0];
+    let ox = o.x.length > inx ? o.x[inx] : o.x[0];
+    let oy = o.y.length > inx ? o.y[inx] : o.y[0];
+    if (ix == iy && ox == oy) {
         return "linear";
     }
-    return "cubic-bezier("+o.x+","+o.y+","+i.x+","+i.y+")";
+    return "cubic-bezier("+ox+","+oy+","+ix+","+iy+")";
 }
 
 function setKf(kfs, time, value, ease)
@@ -216,6 +220,7 @@ function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, add
     } else {
         let kfsx = new Map();
         let kfsy = new Map();
+        let sameEase = true;
         for (let i = 0; i < obj.k.length; ++i) {
             let k = obj.k[i];
             if (i == obj.k.length-1 && k.h != 1) { // process last kf only if it is hold kf
@@ -226,14 +231,22 @@ function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, add
             // TODO: sometimes times are negative??
             let startTime = k.t * globalFrameDur + globalTimeOffset;
             if (startTime >= 0) {
-                setKf(kfsx, startTime, k.s[0]*multiplier + additionX, convertEasing(k, prevk));
-                setKf(kfsy, startTime, k.s[1]*multiplier + additionY, convertEasing(k, prevk));
+                let easeX = convertEasing(k, prevk, 0);
+                let easeY = convertEasing(k, prevk, 1);
+                setKf(kfsx, startTime, k.s[0]*multiplier + additionX, easeX);
+                setKf(kfsy, startTime, k.s[1]*multiplier + additionY, easeY);
+                if (easeX != easeY) {
+                    sameEase = false;
+                }
             }
             let endTime = nextk ? nextk.t * globalFrameDur + globalTimeOffset : -1;
             if (endTime >= 0 && k.e) {
                 setKf(kfsx, endTime, k.e[0]*multiplier + additionX);
                 setKf(kfsy, endTime, k.e[1]*multiplier + additionY);
             }
+        }
+        if (!sameEase) {
+            element.timeline().setSeparated(targetProperty+"X", true);
         }
         copyKfs(kfsx, element, targetProperty+"X");
         copyKfs(kfsy, element, targetProperty+"Y");
@@ -242,11 +255,6 @@ function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, add
 
 function copyMotionPath(obj, element)
 {
-    if (obj.s === true) {
-        element.setProperty("ks:positionX", animatedToValue(obj.x));
-        element.setProperty("ks:positionY", animatedToValue(obj.y));
-        return;
-    }
     if (obj.a != 1 && isUndefined(obj.k[0].t)) {
         element.setProperty("ks:positionX", obj.k[0]);
         element.setProperty("ks:positionY", obj.k[1]);
@@ -302,11 +310,21 @@ function copyMotionPath(obj, element)
     }
 }
 
-function copyTransform(obj, element)
+function copyTransform(obj, element, readMotionPath = true)
 {
     if (!obj) { return; }
     if (obj.p) {
-        copyMotionPath(obj.p, element);
+        if (obj.p.s) { // separated position
+            element.timeline().setSeparated("ks:positionX", true);
+            copyProperty(obj.p.x, element, "ks:positionX", 1);
+            copyProperty(obj.p.y, element, "ks:positionY", 1);
+        } else {
+            if (readMotionPath) {
+                copyMotionPath(obj.p, element);
+            } else {
+                copyPropertyXY(obj.p, element, "ks:position", 1, 0, 0);
+            }
+        }
     }
     if (obj.s) {
         copyPropertyXY(obj.s, element, "ks:scale", 0.01, 0, 0);
@@ -914,7 +932,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
             parentElement.insertAt(0, g);
             copyName(shape, g);
             let tr = findType(shape.it, "tr");
-            copyTransform(tr, g);
+            copyTransform(tr, g, false);
             copyOpacity(tr, g);
 
             // read children before setting colors, because colors are set to paths
