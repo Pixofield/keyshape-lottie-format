@@ -835,7 +835,8 @@ function appendLayer(layersArray, element, assets)
         ind: globalLayerIndex,
         nm: id || "Layer "+globalLayerIndex,
         ks: transform,
-        ao: element.getProperty("ks:motion-rotation") == "auto" ? 1 : 0,
+        ao: element.getProperty("ks:motion-rotation") == "auto" &&
+            !element.timeline().isSeparated("ks:positionX") ? 1 : 0,
         ip: 0,
         op: globalEndFrame > 0 ? globalEndFrame : 1,
         st: 0, // start time
