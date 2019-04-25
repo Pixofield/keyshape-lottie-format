@@ -34,6 +34,11 @@ function toFrame(timems)
     return timems * globalFps / 1000;
 }
 
+function frameToTimeMs(frame)
+{
+    return frame * 1000 / globalFps;
+}
+
 function toRoundFrame(timems)
 {
     return Math.round(toFrame(timems)*10)/10; // one decimal
@@ -922,6 +927,59 @@ function detachFromSymbols(doc, element)
     doc.cmd.detachFromSymbol();
 }
 
+function convertIterationsToKeyframes(doc, element, opTimeMs)
+{
+    // in reality, opTimeMs is never infinity, but check to be certain
+    if (element.getProperty("display") == "none" || opTimeMs == Infinity) {
+        return;
+    }
+    // convert the element tree recursively
+    for (let child of element.children) {
+        convertIterationsToKeyframes(doc, child, opTimeMs);
+    }
+    // convert element iterations
+    let propNames = element.timeline().getKeyframeNames();
+    for (let prop of propNames) {
+        let params = element.timeline().getKeyframeParams(prop);
+        if (!params || params.repeatEnd === null) {
+            continue;
+        }
+        element.timeline().setKeyframeParams(prop, { repeatEnd: null });
+        let repeatEnd = params.repeatEnd !== Infinity ? params.repeatEnd : opTimeMs;
+        let keyframes = element.timeline().getKeyframes(prop);
+        if (keyframes.length < 2) {
+            continue;
+        }
+        let kfStartTime = keyframes[0].time;
+        let kfEndTime = keyframes[keyframes.length-1].time;
+        let kfDur = kfEndTime - kfStartTime;
+        let keepLooping = true;
+        while (keepLooping) {
+            for (let kf of keyframes) {
+                let newTime = kfEndTime + (kf.time - kfStartTime);
+                if (newTime == kfEndTime) {
+                    newTime += 1;
+                }
+                element.timeline().setKeyframe(prop, newTime, kf.value, kf.easing);
+                if (newTime > repeatEnd) {
+                    keepLooping = false;
+                    break;
+                }
+            }
+            kfEndTime += kfDur;
+        }
+        // add keyframe to repeat end time (which may be between keyframes)
+        // and remove keyframes after it
+        element.timeline().addKeyframe(prop, repeatEnd);
+        let newkeyframes = element.timeline().getKeyframes(prop);
+        for (let kf of newkeyframes) {
+            if (kf.time > repeatEnd) {
+                element.timeline().removeKeyframe(prop, kf.time);
+            }
+        }
+    }
+}
+
 function calculateEndTime(element)
 {
     if (element.getProperty("display") == "none") {
@@ -1019,6 +1077,8 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         globalEndFrame = op;
     }
     globalPlayRange = op - ip; // save for preview
+
+    convertIterationsToKeyframes(app.activeDocument, root, frameToTimeMs(globalEndFrame));
 
     let viewBox = root.getProperty("viewBox") || "0 0 100 100";
     let viewValues = viewBox.split(" ");
