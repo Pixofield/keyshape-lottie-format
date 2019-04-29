@@ -1056,6 +1056,27 @@ function getImageAssets()
     return assetArray;
 }
 
+function parseRgba(str)
+{
+    if (str.startsWith("#")) {
+        let c = app.util.parseColor(str);
+        c.alpha = 1;
+        return c;
+    }
+    if (!str || str == "transparent" || !str.startsWith("rgba(")) {
+        return { red: 0, green: 0, blue: 0, alpha: 0 };
+    }
+    let numbers = str.substring(5, str.length-1);
+    let comps = numbers.split(",");
+    return { red: +comps[0]/255, green: +comps[1]/255, blue: +comps[2]/255, alpha: +comps[3] };
+}
+
+function compToHex2(num)
+{
+    num = Math.round(num*255);
+    return (num < 16 ? "0" : "") + num.toString(16);
+}
+
 function createJsonAndCopyAssets(userSelectedFileUrl)
 {
     let root = app.activeDocument.documentElement;
@@ -1094,6 +1115,19 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     let assets = getImageAssets();
 
     let layers = [];
+
+    // add background as a solid layer
+    let bg = parseRgba(root.getProperty("background"));
+    if (bg.alpha > 0) {
+        let hexbg = "#" + compToHex2(bg.red) + compToHex2(bg.green) + compToHex2(bg.blue);
+        let solid = { "ddd": 0, "ind": globalLayerIndex, "ty": 1,
+            "ks":{"o":{"k":bg.alpha*100},"r":{"k":0},"p":{"k":[0,0,0]},"a":{"k":[0,0,0]},"s":{"k":[100,100,100]}},
+            "ao":0, "sw":width, "sh":height, "sc":hexbg,
+            "ip":ip, "op":globalEndFrame>0 ? globalEndFrame : 1, "st":0, "bm":0, "sr":1 };
+        layers.push(solid);
+        globalLayerIndex++;
+    }
+
     for (let child of root.children) {
         appendLayer(layers, child, assets);
     }
