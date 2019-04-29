@@ -952,13 +952,19 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
         }
         let kfStartTime = keyframes[0].time;
         let kfEndTime = keyframes[keyframes.length-1].time;
+        let kfEndValue = keyframes[keyframes.length-1].value;
         let kfDur = kfEndTime - kfStartTime;
         let keepLooping = true;
         while (keepLooping) {
             for (let kf of keyframes) {
                 let newTime = kfEndTime + (kf.time - kfStartTime);
-                if (newTime == kfEndTime) {
+                if (newTime == kfEndTime && kf.value != kfEndValue) {
                     newTime += 1;
+                    // change easing of the last keyframe to be stepped for immediate change
+                    let kfs = element.timeline().getKeyframes(prop);
+                    let lastKf = kfs[kfs.length-1];
+                    element.timeline().setKeyframe(prop, lastKf.time, lastKf.value,
+                                                   "steps(1)");
                 }
                 element.timeline().setKeyframe(prop, newTime, kf.value, kf.easing);
                 if (newTime > repeatEnd) {
@@ -1122,7 +1128,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         h: round(height),
         ddd: 0,
         assets: assets,
-        layers:  layers
+        layers: layers
     };
 
     return json;
