@@ -24,7 +24,6 @@ Basic Lottie features are imported successfully, but there are few limitations:
 
  * path trimming is mapped to stroke dash array animation
  * path trimming supports only simple start to end animations
- * separated position animations are not supported
  * gradient animations are not supported
  * size animations are not supported
  * repeater is not supported
