@@ -508,12 +508,8 @@ function pushStrokeAndFill(shapesArray, element)
         }
         strokeobj.o = valueOrAnimation(element, "stroke-opacity", 1, function(val) { return val*100; });
         strokeobj.w = valueOrAnimation(element, "stroke-width", 1, function(val) { return +val; });
-        if (sc != 2) {
-            strokeobj.lc = sc;
-        }
-        if (sj != 2) {
-            strokeobj.lj = sj;
-        }
+        strokeobj.lc = sc;
+        strokeobj.lj = sj;
         strokeobj.ml = round(miter);
 
         // dashes
@@ -840,26 +836,6 @@ function appendLayer(layersArray, element, assets)
     transform.r = valueOrAnimation(element, "ks:rotation", 0, function(val) { return +val; });
     transform.o = valueOrAnimation(element, "opacity", 1, function(val) { return val*100; });
 
-    // remove default transform values
-    if (transform.p.a == 0 && transform.p.k.length == 2 &&
-            transform.p.k[0] === 0 && transform.p.k[1] === 0) {
-        transform.p = undefined;
-    }
-    if (transform.a.a == 0 && transform.a.k.length == 3 &&
-            transform.a.k[0] === 0 && transform.a.k[1] === 0 && transform.a.k[2] === 0) {
-        transform.a = undefined;
-    }
-    if (transform.s.a == 0 && transform.s.k.length == 3 &&
-            transform.s.k[0] === 100 && transform.s.k[1] === 100 && transform.s.k[2] === 100) {
-        transform.s = undefined;
-    }
-    if (transform.r.a == 0 && transform.r.k === 0) {
-        transform.r = undefined;
-    }
-    if (transform.o.a == 0 && transform.o.k === 100) {
-        transform.o = undefined;
-    }
-
     let blend = blendingModes.indexOf(element.getProperty("mix-blend-mode"));
     if (blend < 0) { blend = 0; }
 
@@ -875,16 +851,6 @@ function appendLayer(layersArray, element, assets)
         st: 0, // start time
         bm: blend,
         sr: 1 // layer time stretch
-    }
-    // remove default values
-    if (obj.bm === 0) {
-        obj.bm = undefined;
-    }
-    if (obj.ao === 0) {
-        obj.ao = undefined;
-    }
-    if (obj.sr === 1) {
-        obj.sr = undefined;
     }
 
     if (element.tagName == "g" || element.tagName == "a" || element.tagName == "svg") {
@@ -1163,9 +1129,9 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     if (bg.alpha > 0) {
         let hexbg = "#" + compToHex2(bg.red) + compToHex2(bg.green) + compToHex2(bg.blue);
         let solid = { "ind": globalLayerIndex, "ty": 1,
-            "ks":{ "o":{"k":bg.alpha*100} },
+            "ks":{"o":{"k":bg.alpha*100},"r":{"k":0},"p":{"k":[0,0,0]},"a":{"k":[0,0,0]},"s":{"k":[100,100,100]}},
             "sw":width, "sh":height, "sc":hexbg,
-            "ip":ip, "op":globalEndFrame>0 ? globalEndFrame : 1, "st":0 };
+            "ip":ip, "op":globalEndFrame>0 ? globalEndFrame : 1, "st":0, sr: 1 };
         layers.push(solid);
         globalLayerIndex++;
     }
