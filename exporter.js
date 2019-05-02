@@ -867,6 +867,10 @@ function appendLayer(layersArray, element, assets)
     if (id !== null && id !== "") {
         obj.ln = id.replace(/ /g, '-');
     }
+    // if no shapes, then skip this element (it could be title, desc or metadata)
+    if (obj.shapes.length == 0) {
+        return;
+    }
     pushMasks(obj, element);
     layersArray.unshift(obj);
     globalLayerIndex++;
