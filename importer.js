@@ -365,6 +365,17 @@ function hexColor(r, g, b)
     return "#" + hex(Math.round(r*mult)) + hex(Math.round(g*mult)) + hex(Math.round(b*mult));
 }
 
+function colorToCss(r, g, b, a)
+{
+    if (a == 1) {
+        return hexColor(r, g, b);
+    }
+    let mult = globalVersion != "4.0.0" ? 255 : 1; // old versions have color range [0, 255]
+    return "rgba(" + Math.round(r*mult) + "," +
+                     Math.round(g*mult) + "," +
+                     Math.round(b*mult) + "," + a + ")";
+}
+
 function colorToHex(colorobj)
 {
     let r = colorobj[0];
@@ -428,7 +439,10 @@ function copyGradient(obj, element, prop)
         let r = stops[i * 4 + 1];
         let g = stops[i * 4 + 2];
         let b = stops[i * 4 + 3];
-        cs.push(hexColor(r, g, b)+" "+offset+"%");
+        // note: this ignores opacity offset
+        let alphainx = obj.g.p*4 + i*2 + 1;
+        let a = stops.length > alphainx ? stops[alphainx] : 1;
+        cs.push(colorToCss(r, g, b, a)+" "+offset+"%");
     }
     grad += cs.join(', ') + ")";
     element.setProperty(prop, grad);

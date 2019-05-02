@@ -453,12 +453,23 @@ function createGradient(colordata, type)
         gobj.a = { a: 0, k: 0 };
     }
     let colors = { a: 0, k: [] };
+    let hasAlpha = false;
+    // solid color values
     for (let stop of colordata.stops) {
         colors.k.push(round(stop.offset));
         colors.k.push(round(stop.red));
         colors.k.push(round(stop.green));
         colors.k.push(round(stop.blue));
-        // TODO: alpha not set here!!
+        if (round(stop.alpha) < 1) {
+            hasAlpha = true;
+        }
+    }
+    // alpha values for gradient stops
+    if (hasAlpha) {
+        for (let stop of colordata.stops) {
+            colors.k.push(round(stop.offset));
+            colors.k.push(round(stop.alpha));
+        }
     }
     gobj.g = {
         p: colordata.stops.length,
