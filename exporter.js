@@ -1103,8 +1103,8 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
 
     let viewBox = root.getProperty("viewBox") || "0 0 100 100";
     let viewValues = viewBox.split(" ");
-    let width = viewValues[2];
-    let height = viewValues[3];
+    let width = round(viewValues[2]);
+    let height = round(viewValues[3]);
 
     let assets = getImageAssets();
 
@@ -1114,10 +1114,10 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     let bg = parseRgba(root.getProperty("background"));
     if (bg.alpha > 0) {
         let hexbg = "#" + compToHex2(bg.red) + compToHex2(bg.green) + compToHex2(bg.blue);
-        let solid = { "ddd": 0, "ind": globalLayerIndex, "ty": 1,
-            "ks":{"o":{"k":bg.alpha*100},"r":{"k":0},"p":{"k":[0,0,0]},"a":{"k":[0,0,0]},"s":{"k":[100,100,100]}},
-            "ao":0, "sw":width, "sh":height, "sc":hexbg,
-            "ip":ip, "op":globalEndFrame>0 ? globalEndFrame : 1, "st":0, "bm":0, "sr":1 };
+        let solid = { "ind": globalLayerIndex, "ty": 1,
+            "ks":{ "o":{"k":bg.alpha*100} },
+            "sw":width, "sh":height, "sc":hexbg,
+            "ip":ip, "op":globalEndFrame>0 ? globalEndFrame : 1, "st":0, "sr":1 };
         layers.push(solid);
         globalLayerIndex++;
     }
@@ -1152,8 +1152,8 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         fr: globalFps,
         ip: ip,
         op: op,
-        w: round(width),
-        h: round(height),
+        w: width,
+        h: height,
         ddd: 0,
         assets: assets,
         layers: layers
