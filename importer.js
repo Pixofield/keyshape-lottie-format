@@ -556,12 +556,10 @@ function copyStroke(obj, element)
     if (obj.ml) {
         element.setProperty("stroke-miterlimit", obj.ml);
     }
-    if (obj.lc) {
-        element.setProperty("stroke-linecap", linecaps[obj.lc-1] || "round");
-    }
-    if (obj.lj) {
-        element.setProperty("stroke-linejoin", linejoins[obj.lj-1] || "round");
-    }
+    let lc = obj.lc ? obj.lc : 2;
+    element.setProperty("stroke-linecap", linecaps[obj.lc-1] || "round");
+    let lj = obj.lj ? obj.lj : 2;
+    element.setProperty("stroke-linejoin", linejoins[obj.lj-1] || "round");
     if (obj.d) {
         copyDash(obj.d, element);
     }
