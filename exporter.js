@@ -315,8 +315,7 @@ function pushTransformAndOpacity(array, element, topLevel)
             "r":  { "a": 0, "k": 0 },
             "o": { "a": 0, "k": 100 },
             "sk": { "a": 0, "k": 0 },
-            "sa": { "a": 0, "k": 0 },
-            "nm": "Transform"
+            "sa": { "a": 0, "k": 0 }
         };
         array.push(transform);
         return;
@@ -344,8 +343,7 @@ function pushTransformAndOpacity(array, element, topLevel)
             "a": 0,
             "k": skewa,
             "ix": 5
-        },
-        "nm": "Transform"
+        }
     };
     array.push(transform);
 }
@@ -413,8 +411,7 @@ function pushMasks(layer, element)
             "mode": "a",
             "pt": { "a": 0, "k": convertContour(contours[0]) },
             "o": valueOrAnimation(pathElem, "opacity", 1, function(val) { return val*100; }),
-            "x": { "a": 0, "k": 0 },
-            "nm": "Mask"
+            "x": { "a": 0, "k": 0 }
         };
         maskArray.push(mask);
     }
@@ -467,7 +464,6 @@ function createGradient(colordata, type)
         p: colordata.stops.length,
         k: colors
     };
-    gobj.nm = "Gradient Fill 1";
     gobj.hd = false;
     return gobj;
 }
@@ -496,8 +492,7 @@ function pushStrokeAndFill(shapesArray, element)
         } else {
             strokeobj = {
                 ty: "st",
-                c: valueOrAnimation(element, "stroke", 0, convertColor),
-                nm: "Stroke 1"
+                c: valueOrAnimation(element, "stroke", 0, convertColor)
             };
         }
         strokeobj.o = valueOrAnimation(element, "stroke-opacity", 1, function(val) { return val*100; });
@@ -540,7 +535,6 @@ function pushStrokeAndFill(shapesArray, element)
             fillobj = {
                 ty: "fl",
                 c: valueOrAnimation(element, "fill", 0, convertColor),
-                nm: "Fill 1",
                 hd: false
             };
         }
@@ -609,7 +603,7 @@ function pushPathShapes(shapesArray, element)
         for (let contour of contours) {
             let pathshape = { ty: "sh" };
             pathshape.d = 1;
-            pathshape.ks = { a: 0, k: {}, nm: "Name", hd: false };
+            pathshape.ks = { a: 0, k: {}, hd: false };
             pathshape.ks.k = convertContour(contour);
             shapesArray.push(pathshape);
         }
@@ -622,7 +616,7 @@ function pushPathShapes(shapesArray, element)
 
     let pathshape = { ty: "sh" };
     pathshape.d = 1;
-    pathshape.ks = { a: 1, k: [], nm: "Name", hd: false };
+    pathshape.ks = { a: 1, k: [], hd: false };
 
     // collect shapes, each contour becomes one shape
     let shapes = [];
@@ -659,7 +653,7 @@ function pushPathShapes(shapesArray, element)
         sh.push({ t: toRoundFrame(lasttime[ci]) });
         let pathshape = { ty: "sh" };
         pathshape.d = 1;
-        pathshape.ks = { a: 1, k: sh, nm: "Name", hd: false };
+        pathshape.ks = { a: 1, k: sh, hd: false };
         shapesArray.push(pathshape);
     }
 }
