@@ -78,19 +78,11 @@ function copyPathData(obj, element, dir, legacyClose)
         let pathData = parsePathData(obj.k, legacyClose);
         element.setProperty("d", pathData);
     } else {
-        for (let i = 0; i < obj.k.length-1; ++i) {
-            let k = obj.k[i];
-            let nextk = obj.k[i+1];
-            // TODO: sometimes times are negative??
-            let startTime = k.t * globalFrameDur + globalTimeOffset;
-            if (startTime >= 0) {
-                let pathData = parsePathData(k.s[0], legacyClose);
-                element.timeline().setKeyframe("d", startTime, pathData);
-            }
-            let endTime = nextk.t * globalFrameDur + globalTimeOffset;
-            if (endTime >= 0 && k.e) {
-                let pathData = parsePathData(k.e[0], legacyClose);
-                element.timeline().setKeyframe("d", endTime, pathData);
+        for (let i = 0; i < obj.k.length; ++i) {
+            let kf = parseKeyframe(obj, i);
+            if (kf) {
+                let pathData = parsePathData(kf.value[0], legacyClose);
+                element.timeline().setKeyframe("d", kf.time, pathData, kf.easing);
             }
         }
     }
@@ -136,6 +128,20 @@ function convertEasing(objk, prevk, inx = 0)
     return "cubic-bezier("+ox+","+oy+","+ix+","+iy+")";
 }
 
+function parseKeyframe(obj, i)
+{
+    let k = obj.k[i];
+    let prevk = i > 0 ? obj.k[i-1] : false;
+    // TODO: times can be negative
+    let startTime = Math.round(k.t * globalFrameDur + globalTimeOffset);
+    if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
+        let val = k.s ? k.s : prevk.e;
+        let ease = convertEasing(k, prevk);
+        return { time: startTime, value: val, easing: ease };
+    }
+    return false;
+}
+
 function setKf(kfs, time, value, ease)
 {
     if (!ease || !kfs.get(time) || ease.indexOf("start") < 0) {
@@ -161,20 +167,9 @@ function readProperty(obj, multiplier)
     } else {
         let kfs = new Map();
         for (let i = 0; i < obj.k.length; ++i) {
-            let k = obj.k[i];
-            if (i == obj.k.length-1 && k.h != 1) { // process last kf only if it is hold kf
-                break;
-            }
-            let prevk = i > 0 ? obj.k[i-1] : false;
-            let nextk = obj.k[i+1];
-            // TODO: sometimes times are negative??
-            let startTime = k.t * globalFrameDur + globalTimeOffset;
-            if (startTime >= 0) {
-                setKf(kfs, startTime, k.s[0]*multiplier, convertEasing(k, prevk));
-            }
-            let endTime = nextk ? nextk.t * globalFrameDur + globalTimeOffset : -1;
-            if (endTime >= 0 && k.e) {
-                setKf(kfs, endTime, k.e[0]*multiplier);
+            let kf = parseKeyframe(obj, i);
+            if (kf) {
+                setKf(kfs, kf.time, kf.value[0]*multiplier, kf.easing);
             }
         }
         return Array.from(kfs, function([key, value]) { return { "time": key, "value": value.v, "easing": value.e } });
@@ -189,20 +184,9 @@ function copyProperty(obj, element, targetProperty, multiplier)
     } else {
         let kfs = new Map();
         for (let i = 0; i < obj.k.length; ++i) {
-            let k = obj.k[i];
-            if (i == obj.k.length-1 && k.h != 1) { // process last kf only if it is hold kf
-                break;
-            }
-            let prevk = i > 0 ? obj.k[i-1] : false;
-            let nextk = obj.k[i+1];
-            // TODO: sometimes times are negative??
-            let startTime = k.t * globalFrameDur + globalTimeOffset;
-            if (startTime >= 0) {
-                setKf(kfs, startTime, k.s[0]*multiplier, convertEasing(k, prevk));
-            }
-            let endTime = nextk ? nextk.t * globalFrameDur + globalTimeOffset : -1;
-            if (endTime >= 0 && k.e) {
-                setKf(kfs, endTime, k.e[0]*multiplier);
+            let kf = parseKeyframe(obj, i);
+            if (kf) {
+                setKf(kfs, kf.time, kf.value[0]*multiplier, kf.easing);
             }
         }
         copyKfs(kfs, element, targetProperty);
@@ -220,26 +204,19 @@ function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, add
         let sameEase = true;
         for (let i = 0; i < obj.k.length; ++i) {
             let k = obj.k[i];
-            if (i == obj.k.length-1 && k.h != 1) { // process last kf only if it is hold kf
-                break;
-            }
             let prevk = i > 0 ? obj.k[i-1] : false;
-            let nextk = obj.k[i+1];
-            // TODO: sometimes times are negative??
-            let startTime = k.t * globalFrameDur + globalTimeOffset;
-            if (startTime >= 0) {
+            // TODO: times can be negative
+            let startTime = Math.round(k.t * globalFrameDur + globalTimeOffset);
+            if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
+                let valueX = k.s ? k.s[0] : prevk.e[0];
+                let valueY = k.s ? k.s[1] : prevk.e[1];
                 let easeX = convertEasing(k, prevk, 0);
                 let easeY = convertEasing(k, prevk, 1);
-                setKf(kfsx, startTime, k.s[0]*multiplier + additionX, easeX);
-                setKf(kfsy, startTime, k.s[1]*multiplier + additionY, easeY);
+                setKf(kfsx, startTime, valueX*multiplier + additionX, easeX);
+                setKf(kfsy, startTime, valueY*multiplier + additionY, easeY);
                 if (easeX != easeY) {
                     sameEase = false;
                 }
-            }
-            let endTime = nextk ? nextk.t * globalFrameDur + globalTimeOffset : -1;
-            if (endTime >= 0 && k.e) {
-                setKf(kfsx, endTime, k.e[0]*multiplier + additionX);
-                setKf(kfsy, endTime, k.e[1]*multiplier + additionY);
             }
         }
         if (!sameEase) {
@@ -259,47 +236,59 @@ function copyMotionPath(obj, element)
         let data = { v: new Map(), i: new Map(), o: new Map() };
         let kfsx = new Map();
         let kfsy = new Map();
+        let prevStartTime = -1;
         for (let i = 0; i < obj.k.length; ++i) {
             let k = obj.k[i];
-            if (i == obj.k.length-1 && k.h != 1) { // process last kf only if it is hold kf
-                break;
-            }
             let prevk = i > 0 ? obj.k[i-1] : false;
-            let nextk = obj.k[i+1];
-            // TODO: sometimes times are negative??
-            let startTime = k.t * globalFrameDur + globalTimeOffset;
-            if (startTime >= 0) {
-                setKf(kfsx, startTime, k.s[0], convertEasing(k, prevk));
-                setKf(kfsy, startTime, k.s[1], convertEasing(k, prevk));
-                data.v.set(startTime, [ k.s[0], k.s[1] ]);
-            }
-            let endTime = nextk ? nextk.t * globalFrameDur + globalTimeOffset : -1;
-            if (endTime >= 0 && k.e) {
-                setKf(kfsx, endTime, k.e[0]);
-                setKf(kfsy, endTime, k.e[1]);
-                data.v.set(endTime, [ k.e[0], k.e[1] ]);
+            // TODO: times can be negative
+            let startTime = Math.round(k.t * globalFrameDur + globalTimeOffset);
+            if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
+                // ensure keyframes don't overwrite each other, otherwise kf count differs
+                // from path node count
+                if (startTime <= prevStartTime) {
+                    startTime = prevStartTime+1;
+                }
+                let valueX = k.s ? k.s[0] : prevk.e[0];
+                let valueY = k.s ? k.s[1] : prevk.e[1];
+                setKf(kfsx, startTime, valueX, convertEasing(k, prevk));
+                setKf(kfsy, startTime, valueY, convertEasing(k, prevk));
+                data.v.set(startTime, [ valueX, valueY ]);
+
+                // nextval is next kf value or this kf end value or this kf value
+                let nextval;
+                if (i < obj.k.length-1 && obj.k[i+1].s) {
+                    nextval = obj.k[i+1].s;
+                } else if (k.e) {
+                    nextval = k.e;
+                } else {
+                    nextval = [ valueX, valueY ];
+                }
                 let to = k.to ? k.to : [ 0, 0 ];
                 let ti = k.ti ? k.ti : [ 0, 0 ];
-                data.i.set(endTime, [ k.s[0]+to[0], k.s[1]+to[1] ]);
-                data.o.set(endTime, [ k.e[0]+ti[0], k.e[1]+ti[1] ]);
+                data.i.set(startTime, [ valueX + to[0], valueY + to[1] ]);
+                data.o.set(startTime, [ nextval[0] + ti[0], nextval[1] + ti[1] ]);
+                prevStartTime = startTime;
             }
         }
         copyKfs(kfsx, element, "ks:positionX");
         copyKfs(kfsy, element, "ks:positionY");
         var mp = "";
         // this assumes that times were in increasing order
+        let prevTime = 0;
         for (let time of data.v.keys()) {
+            let v = data.v.get(time);
             if (mp.length == 0) {
-                mp += "M"+data.v.get(time)[0]+","+data.v.get(time)[1]+" ";
+                mp += "M"+v[0]+","+v[1]+" ";
                 continue;
             }
-            if (data.i.get(time)) {
-                mp += "C"+data.i.get(time)[0]+","+data.i.get(time)[1]+" "+
-                          data.o.get(time)[0]+","+data.o.get(time)[1]+" "+
-                          data.v.get(time)[0]+","+data.v.get(time)[1]+" ";
+            let i = data.i.get(prevTime);
+            let o = data.o.get(prevTime);
+            if (i && o) {
+                mp += "C"+i[0]+","+i[1]+" "+o[0]+","+o[1]+" "+v[0]+","+v[1]+" ";
             } else {
-                mp += "L"+data.v.get(time)[0]+","+data.v.get(time)[1]+" ";
+                mp += "L"+v[0]+","+v[1]+" ";
             }
+            prevTime = time;
         }
         if (mp.length > 0) {
             element.timeline().setMotionPath(mp);
@@ -392,17 +381,10 @@ function copyColor(obj, element, prop)
         if (obj.c.a != 1) {
             element.setProperty(prop, colorToHex(obj.c.k));
         } else {
-            for (let i = 0; i < obj.c.k.length-1; ++i) {
-                let k = obj.c.k[i];
-                let nextk = obj.c.k[i+1];
-                // TODO: sometimes times are negative??
-                let startTime = k.t * globalFrameDur + globalTimeOffset;
-                if (startTime >= 0) {
-                    element.timeline().setKeyframe(prop, startTime, colorToHex(k.s));
-                }
-                let endTime = nextk.t * globalFrameDur + globalTimeOffset;
-                if (endTime >= 0 && k.e) {
-                    element.timeline().setKeyframe(prop, endTime, colorToHex(k.e));
+            for (let i = 0; i < obj.c.k.length; ++i) {
+                let kf = parseKeyframe(obj.c, i);
+                if (kf) {
+                    element.timeline().setKeyframe(prop, kf.time, colorToHex(kf.value), kf.easing);
                 }
             }
         }
@@ -509,18 +491,10 @@ function copyDash(dashArray, element)
             appendDashValue(kfs, obj.v.k);
         } else {
             let dkfs = new Map();
-            for (let i = 0; i < obj.v.k.length-1; ++i) {
-                let prevk = i > 0 ? obj.v.k[i-1] : false;
-                let k = obj.v.k[i];
-                let nextk = obj.v.k[i+1];
-                // TODO: sometimes times are negative??
-                let startTime = k.t * globalFrameDur + globalTimeOffset;
-                if (startTime >= 0) {
-                    setKf(dkfs, startTime, k.s[0], convertEasing(k, prevk));
-                }
-                let endTime = nextk.t * globalFrameDur + globalTimeOffset;
-                if (endTime >= 0 && k.e) {
-                    setKf(dkfs, endTime, k.e[0]);
+            for (let i = 0; i < obj.v.k.length; ++i) {
+                let kf = parseKeyframe(obj.v, i);
+                if (kf) {
+                    setKf(dkfs, kf.time, kf.value[0], kf.easing);
                 }
             }
             if (kfs.size == 0) {
