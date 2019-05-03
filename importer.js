@@ -943,8 +943,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
 
 function readLayers(parentElement, layers)
 {
-    let layerElementInd = {};
-    let index = 0;
+    let indToLayer = {};
     for (let layer of layers) {
         let elem;
         if (layer.td && layer.td > 0) {
@@ -1078,12 +1077,6 @@ function readLayers(parentElement, layers)
                 ];
                 elem.setProperty("mix-blend-mode", blendingModes[layer.bm]);
             }
-            if (!isUndefined(layer.ind)) {
-                index = layer.ind;
-            }
-            elem.index = index;
-            elem.contentIndex = 1;
-            ++index;
             if (layer.ip > globalIp || layer.op < globalOp && !elem.timeline().hasKeyframes("opacity")) {
                 let it = layer.ip * globalFrameDur + globalTimeOffset;
                 let ot = layer.op * globalFrameDur + globalTimeOffset;
@@ -1098,28 +1091,26 @@ function readLayers(parentElement, layers)
         }
 
         if (elem && !isUndefined(layer.ind)) {
-            layerElementInd[layer.ind] = elem;
+            indToLayer[layer.ind] = layer;
         }
     }
-    // TODO: sometimes order isn't correct?
-    // parent layer elements
+    // TODO: remove unnecessary groups
+    // layer parenting
     for (let layer of layers) {
         if (!layer.element) {
             continue;
         }
-        if (!isUndefined(layer.parent) && !isUndefined(layerElementInd[layer.parent])) {
-            let pe = layerElementInd[layer.parent];
-            if (pe.index < layer.element.index) { // try to keep layer drawing order
-                pe.insertAt(0, layer.element);
-                pe.contentIndex++;
-            } else {
-                pe.insertAt(pe.contentIndex+1, layer.element);
-            }
-        } else {
-            parentElement.insertAt(0, layer.element);
-            if (isUndefined(parentElement.contentIndex)) { parentElement.contentIndex = 0; }
-            parentElement.contentIndex++;
+        let elem = layer.element;
+        while (!isUndefined(layer.parent) && !isUndefined(indToLayer[layer.parent])) {
+            let parentLayer = indToLayer[layer.parent];
+            let g = app.activeDocument.createElement("g");
+            copyTransform(parentLayer.ks, g);
+            g.setProperty("id", "PL-"+parentLayer.nm);
+            g.append(elem);
+            layer = parentLayer;
+            elem = g;
         }
+        parentElement.insertAt(0, elem);
     }
 }
 
