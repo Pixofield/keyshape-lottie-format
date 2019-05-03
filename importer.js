@@ -96,25 +96,10 @@ function findType(array, type)
     }
 }
 
-function arraysEqual(a1, a2)
-{
-    if (!a2) { return true; }
-    if (a1.length != a2.length) { return false; }
-    for (let i = 0; i < a1.length; ++i) {
-        if (a1[i] != a2[i]) {
-            return false;
-        }
-    }
-    return true;
-}
-
 function convertEasing(objk, prevk, inx = 0)
 {
     if (objk.h) {
-        if (prevk && prevk.e && arraysEqual(objk.s, prevk.e)) {
-            return "steps(1)";
-        }
-        return "steps(1, start)";
+        return "steps(1)";
     }
     let i = objk.i || { x: [ 0.833 ], y: [ 0.833 ] };
     let o = objk.o || { x: [ 0.167 ], y: [ 0.167 ] };
