@@ -723,17 +723,6 @@ function createStar(shape)
     return parsePathData(data);
 }
 
-function removeAllKeyframes(element, property)
-{
-    if (!element.timeline().hasKeyframes(property)) {
-        return;
-    }
-    let kfs = element.timeline().getKeyframes(property);
-    for (let kf of kfs) {
-        element.timeline().removeKeyframe(property, kf.time);
-    }
-}
-
 function copyPathTrimToDashArray(trimObj, element)
 {
     if (!trimObj) { return; }
@@ -765,8 +754,8 @@ function copyPathTrimToDashArray(trimObj, element)
     let staticStart = Array.isArray(start) ? start[0].value : start;
     let staticEnd = Array.isArray(end) ? end[0].value : end;
     let staticOffset = Array.isArray(offset) ? offset[0].value : offset;
-    removeAllKeyframes(element, "stroke-dasharray");
-    removeAllKeyframes(element, "stroke-dashoffset");
+    element.timeline().removeAllKeyframes("stroke-dasharray");
+    element.timeline().removeAllKeyframes("stroke-dashoffset");
 
     if (Array.isArray(start)) { // start animation
         for (let i = start.length-1; i >= 0; --i) {
