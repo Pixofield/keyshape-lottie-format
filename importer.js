@@ -28,6 +28,11 @@ function isUndefined(val)
     return typeof val == 'undefined';
 }
 
+function frameToTime(fr)
+{
+    return Math.round(fr * globalFrameDur + globalTimeOffset);
+}
+
 function copyName(obj, element)
 {
     if (obj.ln) {
@@ -118,7 +123,7 @@ function parseKeyframe(obj, i)
     let k = obj.k[i];
     let prevk = i > 0 ? obj.k[i-1] : false;
     // TODO: times can be negative
-    let startTime = Math.round(k.t * globalFrameDur + globalTimeOffset);
+    let startTime = frameToTime(k.t);
     if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
         let val = k.s ? k.s : prevk.e;
         let ease = convertEasing(k, prevk);
@@ -191,7 +196,7 @@ function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, add
             let k = obj.k[i];
             let prevk = i > 0 ? obj.k[i-1] : false;
             // TODO: times can be negative
-            let startTime = Math.round(k.t * globalFrameDur + globalTimeOffset);
+            let startTime = frameToTime(k.t);
             if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
                 let valueX = k.s ? k.s[0] : prevk.e[0];
                 let valueY = k.s ? k.s[1] : prevk.e[1];
@@ -226,7 +231,7 @@ function copyMotionPath(obj, element)
             let k = obj.k[i];
             let prevk = i > 0 ? obj.k[i-1] : false;
             // TODO: times can be negative
-            let startTime = Math.round(k.t * globalFrameDur + globalTimeOffset);
+            let startTime = frameToTime(k.t);
             if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
                 // ensure keyframes don't overwrite each other, otherwise kf count differs
                 // from path node count
@@ -1037,8 +1042,8 @@ function readLayers(parentElement, layers)
                 elem.setProperty("mix-blend-mode", blendingModes[layer.bm]);
             }
             if (layer.ip > globalIp || layer.op < globalOp && !elem.timeline().hasKeyframes("opacity")) {
-                let it = layer.ip * globalFrameDur + globalTimeOffset;
-                let ot = layer.op * globalFrameDur + globalTimeOffset;
+                let it = frameToTime(layer.ip);
+                let ot = frameToTime(layer.op);
                 if (it < 0) { it = 0; }
                 if (ot < 0) { ot = 0; }
                 elem.timeline().setKeyframe("opacity", ot, "0");
