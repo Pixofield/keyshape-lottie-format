@@ -85,39 +85,43 @@ function valueOrAnimation(element, prop, defaultValue, processor)
     }
     // animation
     let obj = { a: 1, k: [] };
-    let lastS;
-    for (let i = 0; i < kfs.length-1 ; ++i) {
+    let extraSpan;
+    for (let i = 0; i < kfs.length; ++i) {
         let kf = kfs[i];
-        let kf2 = kfs[i+1];
         let val = processor ? processor(kf.value) : kf.value;
-        let val2 = processor ? processor(kf2.value) : kf2.value;
-        let h;
-        if (kf.easing.startsWith("steps(")) {
-            h = 1;
-            if (kf.easing.indexOf("start") > 0) { val = val2; }
-        }
         let span = {
             t: toRoundFrame(kf.time),
             s: Array.isArray(val) ? val : [ round(val) ] // processor may return ready-made arrays
         };
-        if (h) {
-            span.h = h;
-            lastS = Array.isArray(val2) ? val2 : [ round(val2) ];
-        } else {
-            let ease = convertEasing(kf.easing);
-            span.i = { x: [ ease[2] ], y: [ ease[3] ] };
-            span.o = { x: [ ease[0] ], y: [ ease[1] ] };
-            span.e = Array.isArray(val2) ? val2 : [ round(val2) ];
-            lastS = undefined;
+        extraSpan = undefined;
+        if (i < kfs.length-1) { // last keyframe doesn't need easing
+            if (kf.easing.startsWith("steps(")) {
+                span.h = 1;
+                if (kf.easing.indexOf("start") > 0) {
+                    // insert an extra span for start step unless kf2 is close to kf
+                    let kf2 = kfs[i+1];
+                    if (toRoundFrame(kf2.time) > toRoundFrame(kf.time) + 0.01) {
+                        let val2 = processor ? processor(kf2.value) : kf2.value;
+                        extraSpan = {
+                            t: toRoundFrame(kf.time) + 0.01,
+                            s: Array.isArray(val2) ? val2 : [ round(val2) ],
+                            h: 1
+                        };
+                    }
+                }
+            } else {
+                let ease = convertEasing(kf.easing);
+                span.i = { x: [ ease[2] ], y: [ ease[3] ] };
+                span.o = { x: [ ease[0] ], y: [ ease[1] ] };
+                // output end values for older players
+                let kf2 = kfs[i+1];
+                let val2 = processor ? processor(kf2.value) : kf2.value;
+                span.e = Array.isArray(val2) ? val2 : [ round(val2) ];
+            }
         }
         obj.k.push(span);
+        if (extraSpan) obj.k.push(extraSpan);
     }
-    let lastKeydata = { t: toRoundFrame(kfs[kfs.length-1].time) };
-    if (lastS) {
-        lastKeydata.s = lastS;
-        lastKeydata.h = 1;
-    }
-    obj.k.push(lastKeydata);
     return obj;
 }
 
@@ -141,55 +145,65 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
     }
     // animation
     let obj = { a: 1, k: [] };
-    let lastS;
-    for (let i = 0; i < kfsx.length-1 ; ++i) {
+    let extraSpan;
+    for (let i = 0; i < kfsx.length; ++i) {
         let kfx = kfsx[i];
         let kfy = kfsy[i];
-        let kf2x = kfsx[i+1];
-        let kf2y = kfsy[i+1];
         let valx = processor ? processor(kfx.value) : kfx.value;
         let valy = processor ? processor(kfy.value) : kfy.value;
-        let val2x = processor ? processor(kf2x.value) : kf2x.value;
-        let val2y = processor ? processor(kf2y.value) : kf2y.value;
-        let easex = convertEasing(kfx.easing);
-        let easey = convertEasing(kfy.easing);
-        // NOTE: only stepped x is supported and it affects y
-        let h;
-        if (kfx.easing.startsWith("steps(")) {
-            h = 1;
-            if (kfx.easing.indexOf("start") > 0) { valx = val2x; valy = val2y; }
-        }
         valx = round(valx);
         valy = round(valy);
-        val2x = round(val2x);
-        val2y = round(val2y);
-        let singleEase = easex[0] == easey[0] && easex[1] == easey[1] &&
-                         easex[2] == easey[2] && easex[3] == easey[3];
         let span = {
-            i: {
-                x: singleEase ? [ easex[2] ] : [ easex[2], easey[2] ],
-                y: singleEase ? [ easex[3] ] : [ easex[3], easey[3] ] },
-            o: {
-                x: singleEase ? [ easex[0] ] : [ easex[0], easey[0] ],
-                y: singleEase ? [ easex[1] ] : [ easex[1], easey[1] ] },
             t: toRoundFrame(kfx.time),
             s: dim == 3 ? [ valx, valy, defaultValue ] : [ valx, valy ]
         };
-        if (h) {
-            span.h = h;
-            lastS = dim == 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ]
-        } else {
-            span.e = dim == 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ]
-            lastS = undefined;
+        extraSpan = undefined;
+        // TODO: support separated properties having a stepped and non-stepped easing
+        if (i < kfsx.length-1) { // last keyframe doesn't need easing
+            if (kfx.easing.startsWith("steps(")) {
+                span.h = 1;
+                if (kfx.easing.indexOf("start") > 0) {
+                    // insert an extra span for start step unless kf2 is close to kf
+                    let kf2x = kfsx[i+1];
+                    let kf2y = kfsy[i+1];
+                    if (toRoundFrame(kf2x.time) > toRoundFrame(kfx.time) + 0.01) {
+                        let val2x = processor ? processor(kf2x.value) : kf2x.value;
+                        let val2y = processor ? processor(kf2y.value) : kf2y.value;
+                        val2x = round(val2x);
+                        val2y = round(val2y);
+                        extraSpan = {
+                            t: toRoundFrame(kfx.time) + 0.01,
+                            s: dim == 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ],
+                            h: 1
+                        };
+                    }
+                }
+            } else {
+                let easex = convertEasing(kfx.easing);
+                let easey = convertEasing(kfy.easing);
+                let singleEase = easex[0] == easey[0] && easex[1] == easey[1] &&
+                                 easex[2] == easey[2] && easex[3] == easey[3];
+                span.i = {
+                    x: singleEase ? [ easex[2] ] : [ easex[2], easey[2] ],
+                    y: singleEase ? [ easex[3] ] : [ easex[3], easey[3] ]
+                };
+                span.o = {
+                    x: singleEase ? [ easex[0] ] : [ easex[0], easey[0] ],
+                    y: singleEase ? [ easex[1] ] : [ easex[1], easey[1] ]
+                };
+                // output end values for older players
+                let kf2x = kfsx[i+1];
+                let kf2y = kfsy[i+1];
+                let val2x = processor ? processor(kf2x.value) : kf2x.value;
+                let val2y = processor ? processor(kf2y.value) : kf2y.value;
+                val2x = round(val2x);
+                val2y = round(val2y);
+                span.e = (dim == 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ]);
+            }
         }
         obj.k.push(span);
+        if (extraSpan) obj.k.push(extraSpan);
     }
-    let lastKeydata = { t: toRoundFrame(kfsx[kfsx.length-1].time) };
-    if (lastS) {
-        lastKeydata.s = lastS;
-        lastKeydata.h = 1;
-    }
-    obj.k.push(lastKeydata);
     return obj;
 }
 
@@ -226,51 +240,52 @@ function valueOrMotionPath(element)
     // animation
     let mpcmds = new KSPathData(element.timeline().getMotionPath()).commands;
     let obj = { a: 1, k: [] };
-    let lastS;
-    for (let i = 0; i < kfsx.length-1 ; ++i) {
+    let extraSpan;
+    for (let i = 0; i < kfsx.length; ++i) {
         let kfx = kfsx[i];
         let kfy = kfsy[i];
-        let kf2x = kfsx[i+1];
-        let kf2y = kfsy[i+1];
-        let valx = kfx.value;
-        let valy = kfy.value;
-        let val2x = kf2x.value;
-        let val2y = kf2y.value;
-        let ease = convertEasing(kfx.easing);
-        let ctrls = controlPoints(mpcmds, +valx, +valy, +val2x, +val2y, i);
-        let h;
-        if (kfx.easing.startsWith("steps(")) {
-            h = 1;
-            if (kfx.easing.indexOf("start") > 0) { valx = val2x; valy = val2y; }
-            ctrls = [ 0, 0, 0, 0 ];
-        }
-        valx = round(valx);
-        valy = round(valy);
-        val2x = round(val2x);
-        val2y = round(val2y);
+        let valx = round(kfx.value);
+        let valy = round(kfy.value);
         let span = {
-            i: { x: [ ease[2] ], y: [ clampEasingY(ease[3]) ] },
-            o: { x: [ ease[0] ], y: [ clampEasingY(ease[1]) ] },
             t: toRoundFrame(kfx.time),
             s: [ valx, valy, 0 ]
         };
-        if (h) {
-            span.h = h;
-            lastS = [ val2x, val2y, 0 ];
-        } else {
-            span.to = [ ctrls[2], ctrls[3], 0 ];
-            span.ti = [ ctrls[0], ctrls[1], 0 ];
-            span.e = [ val2x, val2y, 0 ];
-            lastS = undefined;
+        extraSpan = undefined;
+        if (i < kfsx.length-1) { // last keyframe doesn't need easing
+            if (kfx.easing.startsWith("steps(")) {
+                span.h = 1;
+                if (kfx.easing.indexOf("start") > 0) {
+                    // insert an extra span for start step unless kf2 is close to kf
+                    let kf2x = kfsx[i+1];
+                    let kf2y = kfsy[i+1];
+                    if (toRoundFrame(kf2x.time) > toRoundFrame(kfx.time) + 0.01) {
+                        let val2x = round(kf2x.value);
+                        let val2y = round(kf2y.value);
+                        extraSpan = {
+                            t: toRoundFrame(kfx.time) + 0.01,
+                            s: [ val2x, val2y, 0 ],
+                            h: 1
+                        };
+                    }
+                }
+            } else {
+                let kf2x = kfsx[i+1];
+                let kf2y = kfsy[i+1];
+                let val2x = round(kf2x.value);
+                let val2y = round(kf2y.value);
+                let ctrls = controlPoints(mpcmds, +valx, +valy, +val2x, +val2y, i);
+                span.to = [ ctrls[2], ctrls[3], 0 ];
+                span.ti = [ ctrls[0], ctrls[1], 0 ];
+                let ease = convertEasing(kfx.easing);
+                span.i = { x: [ ease[2] ], y: [ clampEasingY(ease[3]) ] };
+                span.o = { x: [ ease[0] ], y: [ clampEasingY(ease[1]) ] };
+                // output end values for older players
+                span.e = [ val2x, val2y, 0 ];
+            }
         }
         obj.k.push(span);
+        if (extraSpan) obj.k.push(extraSpan);
     }
-    let lastKeydata = { t: toRoundFrame(kfsx[kfsx.length-1].time) };
-    if (lastS) {
-        lastKeydata.s = lastS;
-        lastKeydata.h = 1;
-    }
-    obj.k.push(lastKeydata);
     return obj;
 }
 
