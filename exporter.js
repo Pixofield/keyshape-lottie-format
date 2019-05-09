@@ -1245,17 +1245,26 @@ function previewAnimation(folderUrl)
 </head>
 <body style="background-color: #fff; margin: 0px;">
 
-<div id="bm"></div>
+<div id="bmdiv"></div>
+<div id="errormsg" style="text-align:center;font-family:sans-serif;"></div>
 
 <script>
-let animationData = ` + JSON.stringify(json) + `
-bodymovin.loadAnimation({
-  container: document.getElementById('bm'),
-  renderer: 'svg',
-  loop: true,
-  autoplay: `+aplay+`,
-  animationData: animationData
-})
+let animationData = ` + JSON.stringify(json) + `;
+try {
+    bodymovin.loadAnimation({
+      container: document.getElementById('bmdiv'),
+      renderer: 'svg',
+      loop: true,
+      autoplay: `+aplay+`,
+      animationData: animationData
+    });
+} catch (e) {
+    var st = e.stack.replace(/file:.*lottie/g, " ").replace(/\\n/g, "<br>");
+    document.getElementById("bmdiv").style.display = "none";
+    document.getElementById("errormsg").innerHTML =
+        "<h1>Oops! Lottie preview failed!</h1><p>The Keyshape Lottie plugin seems to have a bug. Player stack trace:</p>"+e+"<br><br>"+st;
+    throw e;
+}
 </script>
 </body>
 </html>
