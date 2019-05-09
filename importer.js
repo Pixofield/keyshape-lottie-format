@@ -101,13 +101,17 @@ function findType(array, type)
     }
 }
 
-function convertEasing(objk, prevk, inx = 0)
+function convertEasing(k, nextk, inx = 0)
 {
-    if (objk.h) {
+    if (k.h) {
+        // recognize Keyshape written step start easing
+        if (nextk && nextk.h && k.t + 0.01 >= nextk.t) {
+            return "steps(1, start)";
+        }
         return "steps(1)";
     }
-    let i = objk.i || { x: [ 0.833 ], y: [ 0.833 ] };
-    let o = objk.o || { x: [ 0.167 ], y: [ 0.167 ] };
+    let i = k.i || { x: [ 0.833 ], y: [ 0.833 ] };
+    let o = k.o || { x: [ 0.167 ], y: [ 0.167 ] };
     let ix = i.x.length > inx ? i.x[inx] : i.x[0];
     let iy = i.y.length > inx ? i.y[inx] : i.y[0];
     let ox = o.x.length > inx ? o.x[inx] : o.x[0];
@@ -122,23 +126,18 @@ function parseKeyframe(obj, i)
 {
     let k = obj.k[i];
     let prevk = i > 0 ? obj.k[i-1] : false;
+    if (prevk && prevk.h && k.h && prevk.t + 0.01 >= k.t) { // skip step start second keyframe
+        return false;
+    }
     // TODO: times can be negative
     let startTime = frameToTime(k.t);
     if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
         let val = k.s ? k.s : prevk.e;
-        let ease = convertEasing(k, prevk);
+        let nextk = i < obj.k.length-1 ? obj.k[i+1] : false;
+        let ease = convertEasing(k, nextk);
         return { time: startTime, value: val, easing: ease };
     }
     return false;
-}
-
-function setKf(kfs, time, value, ease)
-{
-    if (!ease || !kfs.get(time) || ease.indexOf("start") < 0) {
-        kfs.set(time, { v: value, e: ease });
-    } else { // steps start must not override keyframe value
-        kfs.set(time, { v: kfs.get(time).v, e: ease });
-    }
 }
 
 function copyKfs(kfs, element, targetProperty)
@@ -159,10 +158,12 @@ function readProperty(obj, multiplier)
         for (let i = 0; i < obj.k.length; ++i) {
             let kf = parseKeyframe(obj, i);
             if (kf) {
-                setKf(kfs, kf.time, kf.value[0]*multiplier, kf.easing);
+                kfs.set(kf.time, { v: kf.value[0]*multiplier, e: kf.easing });
             }
         }
-        return Array.from(kfs, function([key, value]) { return { "time": key, "value": value.v, "easing": value.e } });
+        return Array.from(kfs, function([key, value]) {
+            return { "time": key, "value": value.v, "easing": value.e };
+        });
 //        return Array.from(kfs, ([key, value]) => { "time": key, "value": value.v, "easing": value.e });
     }
 }
@@ -176,7 +177,7 @@ function copyProperty(obj, element, targetProperty, multiplier)
         for (let i = 0; i < obj.k.length; ++i) {
             let kf = parseKeyframe(obj, i);
             if (kf) {
-                setKf(kfs, kf.time, kf.value[0]*multiplier, kf.easing);
+                kfs.set(kf.time, { v: kf.value[0]*multiplier, e: kf.easing });
             }
         }
         copyKfs(kfs, element, targetProperty);
@@ -195,15 +196,19 @@ function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, add
         for (let i = 0; i < obj.k.length; ++i) {
             let k = obj.k[i];
             let prevk = i > 0 ? obj.k[i-1] : false;
+            if (prevk && prevk.h && k.h && prevk.t + 0.01 >= k.t) { // skip step start second keyframe
+                continue;
+            }
             // TODO: times can be negative
             let startTime = frameToTime(k.t);
             if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
                 let valueX = k.s ? k.s[0] : prevk.e[0];
                 let valueY = k.s ? k.s[1] : prevk.e[1];
-                let easeX = convertEasing(k, prevk, 0);
-                let easeY = convertEasing(k, prevk, 1);
-                setKf(kfsx, startTime, valueX*multiplier + additionX, easeX);
-                setKf(kfsy, startTime, valueY*multiplier + additionY, easeY);
+                let nextk = i < obj.k.length-1 ? obj.k[i+1] : false;
+                let easeX = convertEasing(k, nextk, 0);
+                let easeY = convertEasing(k, nextk, 1);
+                kfsx.set(startTime, { v: valueX*multiplier + additionX, e: easeX });
+                kfsy.set(startTime, { v: valueY*multiplier + additionY, e: easeY });
                 if (easeX != easeY) {
                     sameEase = false;
                 }
@@ -230,6 +235,9 @@ function copyMotionPath(obj, element)
         for (let i = 0; i < obj.k.length; ++i) {
             let k = obj.k[i];
             let prevk = i > 0 ? obj.k[i-1] : false;
+            if (prevk && prevk.h && k.h && prevk.t + 0.01 >= k.t) { // skip step start second keyframe
+                continue;
+            }
             // TODO: times can be negative
             let startTime = frameToTime(k.t);
             if (startTime >= 0 && (k.s || (prevk && prevk.e) )) {
@@ -240,8 +248,9 @@ function copyMotionPath(obj, element)
                 }
                 let valueX = k.s ? k.s[0] : prevk.e[0];
                 let valueY = k.s ? k.s[1] : prevk.e[1];
-                setKf(kfsx, startTime, valueX, convertEasing(k, prevk));
-                setKf(kfsy, startTime, valueY, convertEasing(k, prevk));
+                let nextk = i < obj.k.length-1 ? obj.k[i+1] : false;
+                kfsx.set(startTime, { v: valueX, e: convertEasing(k, nextk) });
+                kfsy.set(startTime, { v: valueY, e: convertEasing(k, nextk) });
                 data.v.set(startTime, [ valueX, valueY ]);
 
                 // nextval is next kf value or this kf end value or this kf value
@@ -484,7 +493,7 @@ function copyDash(dashArray, element)
             for (let i = 0; i < obj.v.k.length; ++i) {
                 let kf = parseKeyframe(obj.v, i);
                 if (kf) {
-                    setKf(dkfs, kf.time, kf.value[0], kf.easing);
+                    dkfs.set(kf.time, { v: kf.value[0], e: kf.easing });
                 }
             }
             if (kfs.size == 0) {
@@ -1069,7 +1078,7 @@ function readLayers(parentElement, layers)
             let parentLayer = indToLayer[layer.parent];
             let g = app.activeDocument.createElement("g");
             copyTransform(parentLayer.ks, g);
-            g.setProperty("id", "PL-"+parentLayer.nm);
+            g.setProperty("id", parentLayer.nm);
             g.append(elem);
             layer = parentLayer;
             elem = g;
