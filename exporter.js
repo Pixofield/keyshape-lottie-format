@@ -75,11 +75,11 @@ function convertEasing(easing)
 
 function toPx(lenvalue, defaultValue = 0)
 {
-    lenvalue = lenvalue.trim();
     let val = parseFloat(lenvalue);
     if (!isFinite(val)) {
         return defaultValue;
     }
+    lenvalue = lenvalue.trim();
     if (lenvalue.endsWith("in")) {
         val = val * 96;
     } else if (lenvalue.endsWith("cm")) {
@@ -772,7 +772,7 @@ function addShape(shapesArray, element, topLevel)
         // rect size is relative to center, so move position
         rectshape.p = valueOrAnimationMultiDim(element, 2, "width", "height", 0,
                                                function(val) { return toPx(val)/2; });
-        let r = toPx(element.getProperty("rx")) || 0;
+        let r = toPx(element.getProperty("rx"));
         rectshape.r = { a:0, k: round(r) };
 
         shape.it.push(rectshape);
@@ -788,8 +788,8 @@ function addShape(shapesArray, element, topLevel)
         ellipseshape.ty = "el";
         let x = 0;
         let y = 0;
-        let width = toPx(element.getProperty("rx"))*2 || 0;
-        let height = toPx(element.getProperty("ry"))*2 || 0;
+        let width = toPx(element.getProperty("rx"))*2;
+        let height = toPx(element.getProperty("ry"))*2;
         ellipseshape.s = { a:0, k: [ round(width), round(height) ] };
         ellipseshape.p = { a:0, k: [ round(x), round(y) ] };
 
