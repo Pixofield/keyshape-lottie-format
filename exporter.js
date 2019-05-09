@@ -73,6 +73,27 @@ function convertEasing(easing)
     return [ 0.167, 0.167, 0.833, 0.833 ];
 }
 
+function toPx(lenvalue, defaultValue = 0)
+{
+    lenvalue = lenvalue.trim();
+    let val = parseFloat(lenvalue);
+    if (!isFinite(val)) {
+        return defaultValue;
+    }
+    if (lenvalue.endsWith("in")) {
+        val = val * 96;
+    } else if (lenvalue.endsWith("cm")) {
+        val = val * 96 / 2.54;
+    } else if (lenvalue.endsWith("mm")) {
+        val = val * 96 / 25.4;
+    } else if (lenvalue.endsWith("pt")) {
+        val = val * 96 / 72;
+    } else if (lenvalue.endsWith("pc")) {
+        val = val * 96 * 12 / 72;
+    }
+    return val;
+}
+
 function valueOrAnimation(element, prop, defaultValue, processor)
 {
     let kfs = [];
@@ -522,7 +543,7 @@ function pushStrokeAndFill(shapesArray, element)
             };
         }
         strokeobj.o = valueOrAnimation(element, "stroke-opacity", 1, function(val) { return val*100; });
-        strokeobj.w = valueOrAnimation(element, "stroke-width", 1, function(val) { return +val; });
+        strokeobj.w = valueOrAnimation(element, "stroke-width", 1, function(val) { return toPx(val,1); });
         strokeobj.lc = sc;
         strokeobj.lj = sj;
         strokeobj.ml = round(miter);
@@ -538,14 +559,14 @@ function pushStrokeAndFill(shapesArray, element)
                     nm: gap ? "gap" : "dash",
                     v: valueOrAnimation(element, "stroke-dasharray", "0", function(val) {
                         let dashes = parseDashArray(val);
-                        return i < dashes.length ? +dashes[i] : +dashes[0];
+                        return i < dashes.length ? toPx(dashes[i]) : toPx(dashes[0]);
                     })
                 });
             }
             d.push({
                 n: "o",
                 nm: "offset",
-                v: valueOrAnimation(element, "stroke-dashoffset", 0, function(val) { return +val; })
+                v: valueOrAnimation(element, "stroke-dashoffset", 0, function(val) { return toPx(val); })
             });
             strokeobj.d = d;
         }
@@ -746,10 +767,12 @@ function addShape(shapesArray, element, topLevel)
         let rectshape = {};
         rectshape.d = 1;
         rectshape.ty = "rc";
-        rectshape.s = valueOrAnimationMultiDim(element, 2, "width", "height", 0, function(val) { return +val; });
+        rectshape.s = valueOrAnimationMultiDim(element, 2, "width", "height", 0,
+                                               function(val) { return toPx(val); });
         // rect size is relative to center, so move position
-        rectshape.p = valueOrAnimationMultiDim(element, 2, "width", "height", 0, function(val) { return val/2; });
-        let r = element.getProperty("rx") || 0;
+        rectshape.p = valueOrAnimationMultiDim(element, 2, "width", "height", 0,
+                                               function(val) { return toPx(val)/2; });
+        let r = toPx(element.getProperty("rx")) || 0;
         rectshape.r = { a:0, k: round(r) };
 
         shape.it.push(rectshape);
@@ -765,8 +788,8 @@ function addShape(shapesArray, element, topLevel)
         ellipseshape.ty = "el";
         let x = 0;
         let y = 0;
-        let width = element.getProperty("rx")*2 || 0;
-        let height = element.getProperty("ry")*2 || 0;
+        let width = toPx(element.getProperty("rx"))*2 || 0;
+        let height = toPx(element.getProperty("ry"))*2 || 0;
         ellipseshape.s = { a:0, k: [ round(width), round(height) ] };
         ellipseshape.p = { a:0, k: [ round(x), round(y) ] };
 
@@ -817,6 +840,7 @@ function appendLayer(layersArray, element, assets)
     if (element.getProperty("display") == "none") {
         return;
     }
+    // preprocess image
     let imageAsset;
     if (element.tagName == "image") {
         let href = element.getProperty("href");
@@ -828,9 +852,9 @@ function appendLayer(layersArray, element, assets)
             return;
         }
         // Lottie doesn't support width and height, so adjust scale and anchor to get them supported
-        let iw = element.getProperty("width");
+        let iw = toPx(element.getProperty("width"));
         let iws = iw / imageAsset.w;
-        let ih = element.getProperty("height");
+        let ih = toPx(element.getProperty("height"));
         let ihs = ih / imageAsset.h;
         multiplyProperty(element, "ks:scaleX", iws);
         multiplyProperty(element, "ks:scaleY", ihs);
@@ -893,7 +917,7 @@ function appendLayer(layersArray, element, assets)
         obj.ln = id.replace(/ /g, '-');
     }
     // if no shapes, then skip this element (it could be title, desc or metadata)
-    if (obj.shapes.length == 0) {
+    if (!obj.ty) {
         return;
     }
     pushMasks(obj, element);
