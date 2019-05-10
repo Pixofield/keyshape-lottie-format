@@ -917,152 +917,17 @@ function readShapes(shapes, parentElement, hasDashStroke)
 function readLayers(parentElement, layers)
 {
     let indToLayer = {};
-    for (let layer of layers) {
-        let elem;
-        if (layer.td && layer.td > 0) {
-            continue; // mask
+    for (let i = 0; i < layers.length; ++i) {
+        let layer = layers[i];
+        if (layer.td && layer.td > 0) { // matte track is processed later
+            continue;
         }
-        if (layer.ty == 0) { // precomp
-            elem = app.activeDocument.createElement("g");
-            layer.element = elem;
-            copyName(layer, elem);
-            copyTransform(layer.ks, elem);
-            copyOpacity(layer.ks, elem); // TODO: this should affect only precomp, not parented children
-            globalTimeOffset += layer.ip * globalFrameDur;
-            if (!isUndefined(layer.refId) && globalAssets[layer.refId]) {
-                readLayers(elem, globalAssets[layer.refId].layers);
-            }
-            globalTimeOffset -= layer.ip * globalFrameDur;
-            applyMask(layer, elem);
-
-        } else if (layer.ty == 1) { // solid
-            elem = app.activeDocument.createElement("g");
-            layer.element = elem;
-            copyName(layer, elem);
-            copyTransform(layer.ks, elem);
-            let rect = app.activeDocument.createElement("rect");
-            copyOpacity(layer.ks, rect);
-            rect.setProperty("fill", layer.sc);
-            rect.setProperty("width", layer.sw);
-            rect.setProperty("height", layer.sh);
-            elem.append(rect);
-            applyMask(layer, elem);
-
-        } else if (layer.ty == 2) { // image
-            elem = app.activeDocument.createElement("g");
-            layer.element = elem;
-            copyName(layer, elem);
-            copyTransform(layer.ks, elem);
-            let image = app.activeDocument.createElement("image");
-            copyOpacity(layer.ks, image);
-            elem.append(image);
-            if (!isUndefined(layer.refId) && globalAssets[layer.refId]) {
-                if (globalAssets[layer.refId].e == 1) { // embedded
-                    try {
-                        image.setProperty("href", globalAssets[layer.refId].p);
-                    } catch (e) {
-                        // invalid image -- just leave it blank and keep going
-                    }
-                } else { // not embedded
-                    let fullPath = globalAssets[layer.refId].u + globalAssets[layer.refId].p;
-                    image.setProperty("href", fullPath);
-                }
-                image.setProperty("width", globalAssets[layer.refId].w);
-                image.setProperty("height", globalAssets[layer.refId].h);
-            }
-            applyMask(layer, elem);
-
-        } else if (layer.ty == 3) { // null
-            elem = app.activeDocument.createElement("g");
-            layer.element = elem;
-            copyName(layer, elem);
-            copyTransform(layer.ks, elem);
-            // no opacity copying, null is always parented
-
-        } else if (layer.ty == 4 && layer["shapes"]) { // shape
-            elem = app.activeDocument.createElement("g");
-            layer.element = elem;
-            copyName(layer, elem);
-            copyTransform(layer.ks, elem);
-            readShapes(layer["shapes"], elem, hasDashes(layer["shapes"]));
-            applyPainting(layer["shapes"], elem.children);
-            // copy opacity to children - setting it on 'g' would affect parent children
-            // TODO: should create a wrapper element so that opacity is not overwritten
-            for (let child of elem.children) {
-                if (!child.timeline().hasKeyframes("opacity")) {
-                    copyOpacity(layer.ks, child);
-                }
-            }
-            applyMask(layer, elem);
-
-        } else if (layer.ty == 5) { // text
-            elem = app.activeDocument.createElement("g");
-            layer.element = elem;
-            copyName(layer, elem);
-            copyTransform(layer.ks, elem);
-            let text = app.activeDocument.createElement("text");
-            copyOpacity(layer.ks, text);
-            elem.append(text);
-            if (layer.t && layer.t.d && layer.t.d) {
-                let txt = animatedToValue(layer.t.d);
-                if (layer.t.d.k && layer.t.d.k[0] && layer.t.d.k[0].s && layer.t.d.k[0].s.t) {
-                    txt = layer.t.d.k[0].s;
-                }
-                if (txt) {
-                    if (txt.t) {
-                        text.textContent = txt.t;
-                    }
-                    if (txt.f) {
-                        text.setProperty("font-family", txt.f);
-                    }
-                    if (txt.s) {
-                        text.setProperty("font-size", txt.s);
-                    }
-                    if (txt.fc) {
-                        text.setProperty("fill", colorToHex(txt.fc));
-                    }
-                    if (txt.j) {
-                        const align = [ "start", "end", "middle" ];
-                        text.setProperty("text-anchor", align[txt.j] || "middle");
-                    }
-                    if (txt.tr) {
-                        text.setProperty("letter-spacing", (txt.tr/1000)+"em");
-                    }
-                    if (txt.lh) {
-                        text.setProperty("line-height", txt.lh+"px");
-                    }
-                    if (txt.ls) {
-                        text.setProperty("ks:positionY", -txt.ls);
-                    }
-                }
-            }
-            applyMask(layer, elem);
+        let elem = layerToElement(layer);
+        // if previous layer is a matte track, then add it as a mask
+        // TODO: add support for inverted mattes
+        if (elem && layer.tt && (layer.tt == 1 || layer.tt == 3) && i > 0 && layers[i-1].td) {
+            addTrackMatteMask(elem, layer, layers[i-1]);
         }
-
-        if (elem) {
-            if (layer.ao == 1) {
-                elem.setProperty("ks:motion-rotation", "auto");
-            }
-            if (layer.bm) {
-                const blendingModes = [
-                    "normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn",
-                    "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity"
-                ];
-                elem.setProperty("mix-blend-mode", blendingModes[layer.bm]);
-            }
-            if (layer.ip > globalIp || layer.op < globalOp && !elem.timeline().hasKeyframes("opacity")) {
-                let it = frameToTime(layer.ip);
-                let ot = frameToTime(layer.op);
-                if (it < 0) { it = 0; }
-                if (ot < 0) { ot = 0; }
-                elem.timeline().setKeyframe("opacity", ot, "0");
-                elem.timeline().setKeyframe("opacity", it, "1", "steps(1)");
-                if (it > 0) {
-                    elem.timeline().setKeyframe("opacity", 0, "0", "steps(1)");
-                }
-            }
-        }
-
         if (elem && !isUndefined(layer.ind)) {
             indToLayer[layer.ind] = layer;
         }
@@ -1071,6 +936,9 @@ function readLayers(parentElement, layers)
     // layer parenting
     for (let layer of layers) {
         if (!layer.element) {
+            continue;
+        }
+        if (layer.td && layer.td > 0) { // matte track has already been added to an element
             continue;
         }
         let elem = layer.element;
@@ -1085,6 +953,170 @@ function readLayers(parentElement, layers)
         }
         parentElement.insertAt(0, elem);
     }
+}
+
+function layerToElement(layer)
+{
+    let elem;
+    if (layer.ty == 0) { // precomp
+        elem = app.activeDocument.createElement("g");
+        layer.element = elem;
+        copyName(layer, elem);
+        copyTransform(layer.ks, elem);
+        copyOpacity(layer.ks, elem); // TODO: this should affect only precomp, not parented children
+        globalTimeOffset += layer.ip * globalFrameDur;
+        if (!isUndefined(layer.refId) && globalAssets[layer.refId]) {
+            readLayers(elem, globalAssets[layer.refId].layers);
+        }
+        globalTimeOffset -= layer.ip * globalFrameDur;
+        applyMask(layer, elem);
+
+    } else if (layer.ty == 1) { // solid
+        elem = app.activeDocument.createElement("g");
+        layer.element = elem;
+        copyName(layer, elem);
+        copyTransform(layer.ks, elem);
+        let rect = app.activeDocument.createElement("rect");
+        copyOpacity(layer.ks, rect);
+        rect.setProperty("fill", layer.sc);
+        rect.setProperty("width", layer.sw);
+        rect.setProperty("height", layer.sh);
+        elem.append(rect);
+        applyMask(layer, elem);
+
+    } else if (layer.ty == 2) { // image
+        elem = app.activeDocument.createElement("g");
+        layer.element = elem;
+        copyName(layer, elem);
+        copyTransform(layer.ks, elem);
+        let image = app.activeDocument.createElement("image");
+        copyOpacity(layer.ks, image);
+        elem.append(image);
+        if (!isUndefined(layer.refId) && globalAssets[layer.refId]) {
+            if (globalAssets[layer.refId].e == 1) { // embedded
+                try {
+                    image.setProperty("href", globalAssets[layer.refId].p);
+                } catch (e) {
+                    // invalid image -- just leave it blank and keep going
+                }
+            } else { // not embedded
+                let fullPath = globalAssets[layer.refId].u + globalAssets[layer.refId].p;
+                image.setProperty("href", fullPath);
+            }
+            image.setProperty("width", globalAssets[layer.refId].w);
+            image.setProperty("height", globalAssets[layer.refId].h);
+        }
+        applyMask(layer, elem);
+
+    } else if (layer.ty == 3) { // null
+        elem = app.activeDocument.createElement("g");
+        layer.element = elem;
+        copyName(layer, elem);
+        copyTransform(layer.ks, elem);
+        // no opacity copying, null is always parented
+
+    } else if (layer.ty == 4 && layer["shapes"]) { // shape
+        elem = app.activeDocument.createElement("g");
+        layer.element = elem;
+        copyName(layer, elem);
+        copyTransform(layer.ks, elem);
+        readShapes(layer["shapes"], elem, hasDashes(layer["shapes"]));
+        applyPainting(layer["shapes"], elem.children);
+        // copy opacity to children - setting it on 'g' would affect parent children
+        // TODO: should create a wrapper element so that opacity is not overwritten
+        for (let child of elem.children) {
+            if (!child.timeline().hasKeyframes("opacity")) {
+                copyOpacity(layer.ks, child);
+            }
+        }
+        applyMask(layer, elem);
+
+    } else if (layer.ty == 5) { // text
+        elem = app.activeDocument.createElement("g");
+        layer.element = elem;
+        copyName(layer, elem);
+        copyTransform(layer.ks, elem);
+        let text = app.activeDocument.createElement("text");
+        copyOpacity(layer.ks, text);
+        elem.append(text);
+        if (layer.t && layer.t.d && layer.t.d) {
+            let txt = animatedToValue(layer.t.d);
+            if (layer.t.d.k && layer.t.d.k[0] && layer.t.d.k[0].s && layer.t.d.k[0].s.t) {
+                txt = layer.t.d.k[0].s;
+            }
+            if (txt) {
+                if (txt.t) {
+                    text.textContent = txt.t;
+                }
+                if (txt.f) {
+                    text.setProperty("font-family", txt.f);
+                }
+                if (txt.s) {
+                    text.setProperty("font-size", txt.s);
+                }
+                if (txt.fc) {
+                    text.setProperty("fill", colorToHex(txt.fc));
+                }
+                if (txt.j) {
+                    const align = [ "start", "end", "middle" ];
+                    text.setProperty("text-anchor", align[txt.j] || "middle");
+                }
+                if (txt.tr) {
+                    text.setProperty("letter-spacing", (txt.tr/1000)+"em");
+                }
+                if (txt.lh) {
+                    text.setProperty("line-height", txt.lh+"px");
+                }
+                if (txt.ls) {
+                    text.setProperty("ks:positionY", -txt.ls);
+                }
+            }
+        }
+        applyMask(layer, elem);
+    }
+
+    if (elem) {
+        if (layer.ao == 1) {
+            elem.setProperty("ks:motion-rotation", "auto");
+        }
+        if (layer.bm) {
+            const blendingModes = [
+                "normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn",
+                "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity"
+            ];
+            elem.setProperty("mix-blend-mode", blendingModes[layer.bm]);
+        }
+        if (layer.ip > globalIp || layer.op < globalOp && !elem.timeline().hasKeyframes("opacity")) {
+            let it = frameToTime(layer.ip);
+            let ot = frameToTime(layer.op);
+            if (it < 0) { it = 0; }
+            if (ot < 0) { ot = 0; }
+            elem.timeline().setKeyframe("opacity", ot, "0");
+            elem.timeline().setKeyframe("opacity", it, "1", "steps(1)");
+            if (it > 0) {
+                elem.timeline().setKeyframe("opacity", 0, "0", "steps(1)");
+            }
+        }
+    }
+    return elem;
+}
+
+function addTrackMatteMask(element, layer, matteLayer)
+{
+    let matteElem = layerToElement(matteLayer);
+    if (!matteElem) {
+        return;
+    }
+    // group matte and content so that content transform doesn't affect matte
+    let gElem = app.activeDocument.createElement("g");
+    let maskElem = app.activeDocument.createElement("mask");
+    if (layer.tt == 1) {
+        maskElem.setProperty("mask-type", "alpha");
+    }
+    maskElem.append(matteElem);
+    gElem.append(element);
+    gElem.append(maskElem);
+    layer.element = gElem;
 }
 
 // main import function
