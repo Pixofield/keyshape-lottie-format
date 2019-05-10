@@ -316,7 +316,10 @@ function copyTransform(obj, element, readMotionPath = true)
     }
     if (obj.r) {
         copyProperty(obj.r, element, "ks:rotation", 1);
+    } else if (obj.rz) { // TODO: this should maybe check that ddd==1
+        copyProperty(obj.rz, element, "ks:rotation", 1);
     }
+
     if (obj.sk) {
         let prop = "ks:skewX";
         let mult = -1;
