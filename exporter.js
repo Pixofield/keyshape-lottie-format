@@ -377,8 +377,7 @@ function pushTransformAndOpacity(array, element, topLevel)
         "sk": valueOrAnimation(element, skewProp, 1, skewFunc),
         "sa": {
             "a": 0,
-            "k": skewa,
-            "ix": 5
+            "k": skewa
         }
     };
     array.push(transform);
