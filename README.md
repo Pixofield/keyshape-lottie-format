@@ -49,17 +49,13 @@ Exporting has few limitations:
  * rounded rectangles support only X radius, Y radius is ignored
  * skew X and Y are not supported at the top level objects
  * only skew X or skew Y can be set or animated, not both
- * repeating individual properties is not supported
  * filters are not supported
  * blending isolation is not supported
  * text is converted to paths
  * symbols create duplicate code, which can create large files
- * clipping paths are treated as masks
  * masks can only be under top level objects
- * only rects, ellipses and text are supported under masks
- * only opacity animations are supported in masks and clipping paths
- * masks don't support gradients
- * masks and clipping paths cannot be used together under one element
+ * images are not supported under masks
+ * only one mask or clipping path is allowed under one element
 
 ## Previewing Lottie animations
 

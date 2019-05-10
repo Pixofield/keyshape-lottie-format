@@ -384,78 +384,42 @@ function pushTransformAndOpacity(array, element, topLevel)
     array.push(transform);
 }
 
-function maskPathElements(element)
+function pushMask(layerArray, element, assets)
 {
-    let paths = [];
-    for (let child of element.children) {
+    // reverse order so that the top-most mask or clipPath is processed
+    for (let i = element.children.length-1; i >= 0; --i) {
+        let child = element.children[i];
         if (child.getProperty("display") == "none") {
             continue;
         }
-        if (child.tagName == "mask" || child.tagName == "clipPath") {
-            for (let maskChild of child.children) {
-                if (maskChild.getProperty("display") == "none") {
-                    continue;
+        // convert clipPaths to single color masks
+        if (child.tagName == "clipPath") {
+            child.setProperty("mask-type", "alpha");
+            for (let clipChild of child.children) {
+                let tag = clipChild.tagName;
+                if (tag == "rect" || tag == "ellipse" || tag == "path") {
+                    clipChild.timeline().removeAllKeyframes("opacity");
+                    clipChild.timeline().removeAllKeyframes("fill");
+                    clipChild.timeline().removeAllKeyframes("stroke");
+                    clipChild.timeline().removeAllKeyframes("fill-opacity");
+                    clipChild.setProperty("opacity", 1);
+                    clipChild.setProperty("fill", "#ffffff");
+                    clipChild.setProperty("stroke", "none");
+                    clipChild.setProperty("fill-opacity", 1);
+                    clipChild.setProperty("fill-rule", "nonzero");
+                } else {
+                    clipChild.setProperty("display", "none");
                 }
-                if (maskChild.tagName != "path") {
-                    continue;
-                }
-                if (child.tagName == "clipPath") {
-                    // set opacity to clip path children so they can be used as masks
-                    // TODO: remove opacity keyframes
-                    maskChild.setProperty("opacity", 1);
-                }
-                paths.push(maskChild);
             }
         }
-    }
-    return paths;
-}
-
-function transformElementPath(element, matrix)
-{
-    if (element.timeline().hasKeyframes("d")) {
-        element.timeline().simplifyEasings("d");
-        let kfs = element.timeline().getKeyframes("d");
-        for (let kf of kfs) {
-            let oldd = kf.value;
-            let pd = new KSPathData(oldd);
-            let p2 = pd.transform(matrix);
-            element.timeline().setKeyframe("d", kf.time, p2, kf.easing);
+        if (child.tagName == "mask" || child.tagName == "clipPath") {
+            layerArray[0].tt = child.getProperty("mask-type") == "alpha" ? 1 : 3;
+            // create track matte for mask
+            appendLayer(layerArray, child, assets, element);
+            layerArray[0].td = 1;
+            return; // only one mask or clipPath
         }
-
-    } else {
-        let oldd = element.getProperty("d");
-        let pd = new KSPathData(oldd);
-        let p2 = pd.transform(matrix);
-        element.setProperty("d", p2);
     }
-}
-
-function pushMasks(layer, element)
-{
-    let pathElements = maskPathElements(element);
-    let maskArray = [];
-    for (let pathElem of pathElements) {
-        transformElementPath(pathElem, pathElem.timeline().getTransform(0));
-        let pathdata = pathElem.getProperty("d");
-        let contours = splitToContours(pathdata);
-        if (contours.length == 0) {
-            continue;
-        }
-        let mask = {
-            "inv": false,
-            "mode": "a",
-            "pt": { "a": 0, "k": convertContour(contours[0]) },
-            "o": valueOrAnimation(pathElem, "opacity", 1, function(val) { return val*100; }),
-            "x": { "a": 0, "k": 0 }
-        };
-        maskArray.push(mask);
-    }
-    if (maskArray.length == 0) {
-        return;
-    }
-    layer.hasMask = true;
-    layer.masksProperties = maskArray;
 }
 
 function createGradient(colordata, type)
@@ -835,7 +799,8 @@ function multiplyProperty(element, prop, mult)
     }
 }
 
-function appendLayer(layersArray, element, assets)
+// maskParentForTransform is set if this layer is a track matte layer
+function appendLayer(layersArray, element, assets, maskParentForTransform)
 {
     if (element.getProperty("display") == "none") {
         return;
@@ -863,16 +828,17 @@ function appendLayer(layersArray, element, assets)
     }
 
     let transform = {};
-    if (element.timeline().isSeparated("ks:positionX")) {
+    let te = maskParentForTransform || element;
+    if (te.timeline().isSeparated("ks:positionX")) {
         transform.p = { s: true };
-        transform.p.x = valueOrAnimation(element, "ks:positionX", 0, function(val) { return +val; });
-        transform.p.y = valueOrAnimation(element, "ks:positionY", 0, function(val) { return +val; });
+        transform.p.x = valueOrAnimation(te, "ks:positionX", 0, function(val) { return +val; });
+        transform.p.y = valueOrAnimation(te, "ks:positionY", 0, function(val) { return +val; });
     } else {
-        transform.p = valueOrMotionPath(element);
+        transform.p = valueOrMotionPath(te);
     }
-    transform.a = valueOrAnimationMultiDim(element, 3, "ks:anchorX", "ks:anchorY", 0, function(val) { return -val; });
-    transform.s = valueOrAnimationMultiDim(element, 3, "ks:scaleX", "ks:scaleY", 100, function(val) { return val*100; });
-    transform.r = valueOrAnimation(element, "ks:rotation", 0, function(val) { return +val; });
+    transform.a = valueOrAnimationMultiDim(te, 3, "ks:anchorX", "ks:anchorY", 0, function(val) { return -val; });
+    transform.s = valueOrAnimationMultiDim(te, 3, "ks:scaleX", "ks:scaleY", 100, function(val) { return val*100; });
+    transform.r = valueOrAnimation(te, "ks:rotation", 0, function(val) { return +val; });
     transform.o = valueOrAnimation(element, "opacity", 1, function(val) { return val*100; });
 
     let blend = blendingModes.indexOf(element.getProperty("mix-blend-mode"));
@@ -883,8 +849,8 @@ function appendLayer(layersArray, element, assets)
         ind: globalLayerIndex,
         nm: id || "Layer "+globalLayerIndex,
         ks: transform,
-        ao: element.getProperty("ks:motion-rotation") == "auto" &&
-            !element.timeline().isSeparated("ks:positionX") ? 1 : 0,
+        ao: te.getProperty("ks:motion-rotation") == "auto" &&
+            !te.timeline().isSeparated("ks:positionX") ? 1 : 0,
         ip: 0,
         op: globalEndFrame > 0 ? globalEndFrame : 1,
         st: 0, // start time
@@ -892,7 +858,8 @@ function appendLayer(layersArray, element, assets)
         sr: 1 // layer time stretch
     }
 
-    if (element.tagName == "g" || element.tagName == "a" || element.tagName == "svg") {
+    if (element.tagName == "g" || element.tagName == "a" || element.tagName == "svg" ||
+            maskParentForTransform) {
         // add children
         let shapes = [];
         for (let child of element.children) {
@@ -920,25 +887,18 @@ function appendLayer(layersArray, element, assets)
     if (!obj.ty) {
         return;
     }
-    pushMasks(obj, element);
     layersArray.unshift(obj);
+    if (!maskParentForTransform) {
+        pushMask(layersArray, element, assets);
+    }
     globalLayerIndex++;
 }
 
-function convertToPaths(doc, element, underMask)
+function convertToPaths(doc, element)
 {
     // convert the element tree recursively to paths
     for (let child of element.children) {
-        if (child.tagName == "mask" || child.tagName == "clipPath") {
-            underMask = true;
-        }
-        convertToPaths(doc, child, underMask);
-    }
-    // all rect and ellipses under masks are converted
-    if (underMask && (element.tagName == "rect" || element.tagName == "ellipse")) {
-        doc.selectedElements = [ element ];
-        doc.cmd.convertToPath();
-        return;
+        convertToPaths(doc, child);
     }
     if (element.tagName == "rect") {
         // convert rect element to path if it has dashes to get correct start node
@@ -1133,8 +1093,8 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     // detach symbols from use elements
     detachFromSymbols(app.activeDocument, root);
 
-    // convert rects, ellipses and text to paths
-    convertToPaths(app.activeDocument, root, false);
+    // convert text, rects and ellipses to paths
+    convertToPaths(app.activeDocument, root);
 
     calculateEndTime(root);
     globalEndFrame = Math.round(globalEndFrame*10)/10; // round to 1 decimal
