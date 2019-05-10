@@ -1262,7 +1262,9 @@ try {
     var st = e.stack.replace(/file:.*lottie/g, " ").replace(/\\n/g, "<br>");
     document.getElementById("bmdiv").style.display = "none";
     document.getElementById("errormsg").innerHTML =
-        "<h1>Oops! Lottie preview failed!</h1><p>The Keyshape Lottie plugin seems to have a bug. Player stack trace:</p>"+e+"<br><br>"+st;
+        "<h1>Oops! Lottie preview failed!</h1><p>"+
+            "<a href='https://github.com/Pixofield/keyshape-lottie-format/issues'>Please, report it on GitHub.</a><br><br>"+
+            "Player v"+bodymovin.version+" stack trace:</p>"+e+"<br><br>"+st;
     throw e;
 }
 </script>
