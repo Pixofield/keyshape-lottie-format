@@ -1160,7 +1160,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     }
 
     let json = {
-        v: "5.0.0",
+        v: "5.0.1",
         fr: globalFps,
         ip: ip,
         op: op,
