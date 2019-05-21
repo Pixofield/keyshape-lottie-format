@@ -1164,8 +1164,8 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         fr: globalFps,
         ip: ip,
         op: op,
-        w: width,
-        h: height,
+        w: Math.ceil(width), // round up because iOS viewer can't handle decimals
+        h: Math.ceil(height),
         assets: assets,
         layers: layers
     };
