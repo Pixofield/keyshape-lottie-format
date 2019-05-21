@@ -1113,7 +1113,9 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
 
     convertIterationsToKeyframes(app.activeDocument, root, frameToTimeMs(globalEndFrame));
 
-    let viewBox = root.getProperty("viewBox") || "0 0 100 100";
+    let viewWidth = toPx(root.getProperty("width") || "640");
+    let viewHeight = toPx(root.getProperty("height") || "480");
+    let viewBox = root.getProperty("viewBox") || ("0 0 "+viewWidth+" "+viewHeight);
     let viewValues = viewBox.split(" ");
     let width = round(viewValues[2]);
     let height = round(viewValues[3]);
