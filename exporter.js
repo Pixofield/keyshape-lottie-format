@@ -1161,6 +1161,12 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         }
     }
 
+    // markers
+    let markers = [];
+    for (let m of root.timeline().getTimeMarkers()) {
+        markers.push({ "tm": toRoundFrame(m.time), "cm": m.name, "dr": 0 });
+    }
+
     let json = {
         v: "5.0.1",
         fr: globalFps,
@@ -1169,7 +1175,8 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         w: Math.ceil(width), // round up because iOS viewer can't handle decimals
         h: Math.ceil(height),
         assets: assets,
-        layers: layers
+        layers: layers,
+        markers: markers
     };
 
     return json;

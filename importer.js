@@ -1122,6 +1122,19 @@ function addTrackMatteMask(element, layer, matteLayer)
     layer.element = gElem;
 }
 
+function readMarkers(rootElement, markers)
+{
+    let ml = [];
+    for (let marker of markers) {
+        let m = {
+            time: (marker.tm || 0) * globalFrameDur,
+            name: marker.cm
+        };
+        ml.push(m);
+    }
+    rootElement.timeline().setTimeMarkers(ml);
+}
+
 // main import function
 function doImport(filenameUrl)
 {
@@ -1151,4 +1164,8 @@ function doImport(filenameUrl)
     }
 
     readLayers(root, json["layers"]);
+
+    if (Array.isArray(json["markers"])) {
+        readMarkers(root, json["markers"]);
+    }
 }
