@@ -968,16 +968,22 @@ function convertToPaths(doc, element)
     }
 }
 
-function detachFromSymbols(doc, element)
+function detachFromSymbols(doc, element, hrefStack)
 {
     // detach the element tree recursively
     for (let child of element.children) {
-        detachFromSymbols(doc, child);
+        detachFromSymbols(doc, child, hrefStack);
     }
     // select element to be detached
     // (only detaches elements which can be detached)
     doc.selectedElements = [ element ];
     doc.cmd.detachFromSymbol();
+    // recursively detach the result of <use> elements, also check hrefStack for cyclic references
+    if (element.tagName == "use" && doc.selectedElements.length > 0 &&
+            hrefStack.indexOf(element.getProperty("href")) == -1) {
+        hrefStack.push(element.getProperty("href"));
+        detachFromSymbols(doc, doc.selectedElements[0], hrefStack);
+    }
 }
 
 function convertIterationsToKeyframes(doc, element, opTimeMs)
@@ -1138,7 +1144,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     globalFps = +(root.getProperty("ks:fps") || 10);
 
     // detach symbols from use elements
-    detachFromSymbols(app.activeDocument, root);
+    detachFromSymbols(app.activeDocument, root, []);
 
     // convert text, rects and ellipses to paths
     convertToPaths(app.activeDocument, root);
