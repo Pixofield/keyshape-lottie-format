@@ -51,7 +51,7 @@ function round(val)
 
 function convertColor(val)
 {
-    let kscolor = app.util.parseColor(val);
+    let kscolor = app.activeDocument.parseColor(val);
     if (kscolor.type == "color") {
         return [ round(kscolor.red), round(kscolor.green), round(kscolor.blue),
                  round(kscolor.alpha || 1) ];
@@ -489,7 +489,7 @@ function parseDashArray(str)
 
 function pushStrokeAndFill(shapesArray, element)
 {
-    let s = app.util.parseColor(element.getProperty("stroke"));
+    let s = app.activeDocument.parseColor(element.getProperty("stroke"));
     if (s.type != "none" || element.timeline().hasKeyframes("stroke")) {
         let sc = linecaps.indexOf(element.getProperty("stroke-linecap")) + 1;
         if (sc == -1) { sc = 0; }
@@ -535,7 +535,7 @@ function pushStrokeAndFill(shapesArray, element)
         }
         shapesArray.push(strokeobj);
     }
-    let f = app.util.parseColor(element.getProperty("fill"));
+    let f = app.activeDocument.parseColor(element.getProperty("fill"));
     if (f.type != "none" || element.timeline().hasKeyframes("fill")) {
         let fillrule = element.getProperty("fill-rule") == "evenodd" ? 2 : 1;
         let fillobj;
@@ -1062,21 +1062,6 @@ function getImageAssets()
     return assetArray;
 }
 
-function parseRgba(str)
-{
-    if (str.startsWith("#")) {
-        let c = app.util.parseColor(str);
-        c.alpha = 1;
-        return c;
-    }
-    if (!str || str == "transparent" || !str.startsWith("rgba(")) {
-        return { red: 0, green: 0, blue: 0, alpha: 0 };
-    }
-    let numbers = str.substring(5, str.length-1);
-    let comps = numbers.split(",");
-    return { red: +comps[0]/255, green: +comps[1]/255, blue: +comps[2]/255, alpha: +comps[3] };
-}
-
 function compToHex2(num)
 {
     num = Math.round(num*255);
@@ -1125,7 +1110,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     let layers = [];
 
     // add background as a solid layer
-    let bg = parseRgba(root.getProperty("background"));
+    let bg = app.activeDocument.parseColor(root.getProperty("background"));
     if (bg.alpha > 0) {
         let hexbg = "#" + compToHex2(bg.red) + compToHex2(bg.green) + compToHex2(bg.blue);
         let solid = { "ind": globalLayerIndex, "ty": 1,
