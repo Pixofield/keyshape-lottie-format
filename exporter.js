@@ -487,10 +487,56 @@ function parseDashArray(str)
     return str.replace(/,/g, ' ').split(/\s/);
 }
 
+function colorToCss(color)
+{
+    return "rgba(" + color.red*255 + "," + color.green*255 + "," + color.blue*255 + ", 1)";
+}
+
+// temporary fix to support color alpha by moving it to opacity, needed for Lottie-web and Android
+function moveAlphaToOpacity(element, prop, kscolor)
+{
+    if (kscolor.type != "color") {
+        return;
+    }
+    if (!element.timeline().hasKeyframes(prop)) {
+        if ((kscolor.alpha || 1) == 1) {
+            return;
+        }
+        // move non-animated alpha value to opacity (keyframes)
+        multiplyProperty(element, prop+"-opacity", kscolor.alpha);
+        kscolor.alpha = 1;
+        element.setProperty(prop, colorToCss(kscolor));
+
+    } else if (!element.timeline().hasKeyframes(prop+"-opacity")) {
+        // move alpha keyframes to opacity keyframes
+        let kfs = element.timeline().getKeyframes(prop);
+        let needsAlpha = false;
+        let opacityKfs = [];
+        for (let i = 0; i < kfs.length; ++i) {
+            let kf = kfs[i];
+            let kscolor = app.activeDocument.parseColor(kf.value);
+            let alpha = kscolor.type == "color" ? kscolor.alpha : 1;
+            if (alpha < 1 && kscolor.type == "color") {
+                needsAlpha = true;
+                element.timeline().setKeyframe(prop, kf.time, colorToCss(kscolor), kf.easing);
+            }
+            opacityKfs.push({ time: kf.time, value: alpha, easing: kf.easing });
+        }
+        if (needsAlpha) {
+            let mult = element.getProperty(prop+"-opacity");
+            for (let kf of opacityKfs) {
+                element.timeline().setKeyframe(prop+"-opacity", kf.time, round(kf.value*mult),
+                                               kf.easing);
+            }
+        }
+    }
+}
+
 function pushStrokeAndFill(shapesArray, element)
 {
     let s = app.activeDocument.parseColor(element.getProperty("stroke"));
     if (s.type != "none" || element.timeline().hasKeyframes("stroke")) {
+        moveAlphaToOpacity(element, "stroke", s);
         let sc = linecaps.indexOf(element.getProperty("stroke-linecap")) + 1;
         if (sc == -1) { sc = 0; }
         let sj = linejoins.indexOf(element.getProperty("stroke-linejoin")) + 1;
@@ -537,6 +583,7 @@ function pushStrokeAndFill(shapesArray, element)
     }
     let f = app.activeDocument.parseColor(element.getProperty("fill"));
     if (f.type != "none" || element.timeline().hasKeyframes("fill")) {
+        moveAlphaToOpacity(element, "fill", f);
         let fillrule = element.getProperty("fill-rule") == "evenodd" ? 2 : 1;
         let fillobj;
         if (f.type == "linear-gradient" || f.type == "radial-gradient") {
