@@ -1003,14 +1003,19 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
         if (keyframes.length < 2) {
             continue;
         }
+        let pairedProp = (prop == "ks:positionX" || prop == "ks:scaleX" || prop == "ks:anchorX") &&
+              !element.timeline().isSeparated(prop) ? prop.substr(0, prop.length-1)+"Y" : undefined;
+        let keyframesY = pairedProp ? element.timeline().getKeyframes(prop) : [];
         let kfStartTime = keyframes[0].time;
         let kfEndTime = keyframes[keyframes.length-1].time;
         let kfEndValue = keyframes[keyframes.length-1].value;
         let kfDur = kfEndTime - kfStartTime;
         let keepLooping = true;
         while (keepLooping) {
+            let i = 0;
             for (let kf of keyframes) {
                 let newTime = kfEndTime + (kf.time - kfStartTime);
+
                 if (newTime == kfEndTime && kf.value != kfEndValue) {
                     newTime += 1;
                     // change easing of the last keyframe to be stepped for immediate change
@@ -1018,12 +1023,23 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
                     let lastKf = kfs[kfs.length-1];
                     element.timeline().setKeyframe(prop, lastKf.time, lastKf.value,
                                                    "steps(1)");
+                    if (pairedProp) {
+                        let kfsY = element.timeline().getKeyframes(pairedProp);
+                        let lastKfY = kfsY[kfsY.length-1];
+                        element.timeline().setKeyframe(pairedProp, lastKfY.time, lastKfY.value,
+                                                       "steps(1)");
+                    }
                 }
                 element.timeline().setKeyframe(prop, newTime, kf.value, kf.easing);
+                if (pairedProp) {
+                    let kfY = keyframesY[i];
+                    element.timeline().setKeyframe(pairedProp, newTime, kfY.value, kfY.easing);
+                }
                 if (newTime > repeatEnd) {
                     keepLooping = false;
                     break;
                 }
+                ++i;
             }
             kfEndTime += kfDur;
         }
