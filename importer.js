@@ -367,13 +367,13 @@ function colorToCss(r, g, b, a)
                      Math.round(b*mult) + "," + a + ")";
 }
 
-function colorToHex(colorobj)
+function colorObjToCss(colorobj)
 {
     let r = colorobj[0];
     let g = colorobj[1];
     let b = colorobj[2];
     let a = colorobj[3];
-    return hexColor(r, g, b);
+    return colorToCss(r, g, b, a);
 }
 
 function copyColor(obj, element, prop)
@@ -381,12 +381,12 @@ function copyColor(obj, element, prop)
     // color
     if (obj.c) {
         if (obj.c.a != 1) {
-            element.setProperty(prop, colorToHex(obj.c.k));
+            element.setProperty(prop, colorObjToCss(obj.c.k));
         } else {
             for (let i = 0; i < obj.c.k.length; ++i) {
                 let kf = parseKeyframe(obj.c, i);
                 if (kf) {
-                    element.timeline().setKeyframe(prop, kf.time, colorToHex(kf.value), kf.easing);
+                    element.timeline().setKeyframe(prop, kf.time, colorObjToCss(kf.value), kf.easing);
                 }
             }
         }
@@ -1058,7 +1058,7 @@ function layerToElement(layer)
                     text.setProperty("font-size", txt.s);
                 }
                 if (txt.fc) {
-                    text.setProperty("fill", colorToHex(txt.fc));
+                    text.setProperty("fill", colorObjToCss(txt.fc));
                 }
                 if (txt.j) {
                     const align = [ "start", "end", "middle" ];
