@@ -26,7 +26,7 @@ function getFilenames(userSelectedFileUrl)
 
 let globalLayerIndex = 1;
 let globalFps = 10;
-let globalEndFrame = 0;
+let globalOpForLayers = 0;
 let globalPlayRange = 0;
 
 function toFrame(timems)
@@ -898,7 +898,7 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
         ao: te.getProperty("ks:motion-rotation") == "auto" &&
             !te.timeline().isSeparated("ks:positionX") ? 1 : 0,
         ip: 0,
-        op: globalEndFrame > 0 ? globalEndFrame : 1,
+        op: globalOpForLayers > 0 ? globalOpForLayers : 1,
         st: 0, // start time
         bm: blend,
         sr: 1 // layer time stretch
@@ -1048,8 +1048,8 @@ function calculateEndTime(element)
     for (let name of names) {
         let kfs = element.timeline().getKeyframes(name);
         let end = kfs[kfs.length-1].time;
-        if (globalEndFrame < toFrame(end)) {
-            globalEndFrame = toFrame(end);
+        if (globalOpForLayers < toFrame(end)) {
+            globalOpForLayers = toFrame(end);
         }
     }
     for (let child of element.children) {
@@ -1127,23 +1127,20 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     // convert text, rects and ellipses to paths
     convertToPaths(app.activeDocument, root);
 
+    // time for the last keyframe is the op for the layers
     calculateEndTime(root);
-    globalEndFrame = Math.round(globalEndFrame*10)/10; // round to 1 decimal
+    globalOpForLayers = Math.round(globalOpForLayers*10)/10; // round to 1 decimal
 
-    let ip = toFrame(root.getProperty("ks:playRangeIn") || 0);
-    let op = root.getProperty("ks:playRangeOut");
-    if (op == null || op == "last-keyframe" || op == "infinity") {
-        op = globalEndFrame;
-    } else {
-        op = toFrame(op);
-    }
+    let playRange = app.activeDocument.getPlayRange();
+    let ip = toFrame(playRange.in);
+    let op = toFrame(playRange.definiteOut);
 
-    if (op > globalEndFrame) { // use op in layers
-        globalEndFrame = op;
+    if (op > globalOpForLayers) { // use op in layers
+        globalOpForLayers = op;
     }
     globalPlayRange = op - ip; // save for preview
 
-    convertIterationsToKeyframes(app.activeDocument, root, frameToTimeMs(globalEndFrame));
+    convertIterationsToKeyframes(app.activeDocument, root, frameToTimeMs(globalOpForLayers));
 
     let viewWidth = toPx(root.getProperty("width") || "640");
     let viewHeight = toPx(root.getProperty("height") || "480");
@@ -1163,7 +1160,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         let solid = { "ind": globalLayerIndex, "ty": 1,
             "ks":{"o":{"k":bg.alpha*100},"r":{"k":0},"p":{"k":[0,0,0]},"a":{"k":[0,0,0]},"s":{"k":[100,100,100]}},
             "sw":width, "sh":height, "sc":hexbg,
-            "ip":ip, "op":globalEndFrame>0 ? globalEndFrame : 1, "st":0, sr: 1 };
+            "ip":ip, "op":globalOpForLayers>0 ? globalOpForLayers : 1, "st":0, sr: 1 };
         layers.push(solid);
         globalLayerIndex++;
     }
