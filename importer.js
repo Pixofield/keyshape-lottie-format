@@ -112,6 +112,11 @@ function convertEasing(k, nextk, inx = 0)
     }
     let i = k.i || { x: [ 0.833 ], y: [ 0.833 ] };
     let o = k.o || { x: [ 0.167 ], y: [ 0.167 ] };
+    // sometimes i and o are plain numbers
+    if (typeof i.x == 'number') { i.x = [ i.x ]; }
+    if (typeof i.y == 'number') { i.y = [ i.y ]; }
+    if (typeof o.x == 'number') { o.x = [ o.x ]; }
+    if (typeof o.y == 'number') { o.y = [ o.y ]; }
     let ix = i.x.length > inx ? i.x[inx] : i.x[0];
     let iy = i.y.length > inx ? i.y[inx] : i.y[0];
     let ox = o.x.length > inx ? o.x[inx] : o.x[0];
