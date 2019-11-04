@@ -1011,10 +1011,11 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
         }
         let pairedProp = (prop == "ks:positionX" || prop == "ks:scaleX" || prop == "ks:anchorX") &&
               !element.timeline().isSeparated(prop) ? prop.substr(0, prop.length-1)+"Y" : undefined;
-        let keyframesY = pairedProp ? element.timeline().getKeyframes(prop) : [];
+        let keyframesY = pairedProp ? element.timeline().getKeyframes(pairedProp) : [];
         let kfStartTime = keyframes[0].time;
         let kfEndTime = keyframes[keyframes.length-1].time;
         let kfEndValue = keyframes[keyframes.length-1].value;
+        let kfEndValueY = pairedProp ? keyframesY[keyframesY.length-1].value : undefined;
         let kfDur = kfEndTime - kfStartTime;
         let keepLooping = true;
         while (keepLooping) {
@@ -1022,7 +1023,12 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
             for (let kf of keyframes) {
                 let newTime = kfEndTime + (kf.time - kfStartTime);
 
-                if (newTime == kfEndTime && kf.value != kfEndValue) {
+                let valueMatch = kf.value == kfEndValue;
+                if (pairedProp) {
+                    let kfY = keyframesY[i];
+                    valueMatch = valueMatch && (kfY.value == kfEndValueY);
+                }
+                if (newTime == kfEndTime && !valueMatch) {
                     newTime += 1;
                     // change easing of the last keyframe to be stepped for immediate change
                     let kfs = element.timeline().getKeyframes(prop);
