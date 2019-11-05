@@ -574,31 +574,32 @@ function multiDimAnimatedToValue(value)
 
 const EllipseK = 4*(Math.sqrt(2)-1)/3;
 
-function createRect(shape)
+function createRect(shape, posx, posy)
 {
     var p = multiDimAnimatedToValue(shape.p);
     var s = multiDimAnimatedToValue(shape.s);
     let rad = animatedToValue(shape.r);
     var midx = p[0], midy = p[1], sw = s[0]/2, sh = s[1]/2;
     if (rad == 0) {
+        let l = -sw + posx, t = -sh + posy, r = sw + posx, b = sh + posy;
         if (shape.d !== 3) {
-            return "M" + (sw) + "," + (-sh) +
-                   "L" + (sw) + "," + (sh) +
-                   "L" + (-sw) + "," + (sh) +
-                   "L" + (-sw) + "," + (-sh) +
-                   "L" + (sw) + "," + (-sh) + "Z";
+            return "M" + r + "," + t +
+                   "L" + r + "," + b +
+                   "L" + l + "," + b +
+                   "L" + l + "," + t +
+                   "L" + r + "," + t + "Z";
         } else {
-            return "M" + (sw) + "," + (-sh) +
-                   "L" + (-sw) + "," + (-sh) +
-                   "L" + (-sw) + "," + (sh) +
-                   "L" + (sw) + "," + (sh) +
-                   "L" + (sw) + "," + (-sh) + "Z";
+            return "M" + r + "," + t +
+                   "L" + l + "," + t +
+                   "L" + l + "," + b +
+                   "L" + r + "," + b +
+                   "L" + r + "," + t + "Z";
         }
     } else {
         if (rad > sw) { rad = sw; }
         if (rad > sh) { rad = sh; }
         let rk = EllipseK * rad;
-        let t = -sh, r = sw, b = sh, l = -sw;
+        let l = -sw + posx, t = -sh + posy, r = sw + posx, b = sh + posy;
         if (shape.d !== 3) {
             return "M" + (r) + "," + (t+rad) +
                    "L" + (r) + "," + (b-rad) +
@@ -648,14 +649,14 @@ function createEllipse(shape)
 }
 
 /* Copied/modified from https://github.com/airbnb/lottie-web JS player */
-function createPolygon(shape)
+function createPolygon(shape, posx, posy, rot)
 {
     var numPts = Math.floor(animatedToValue(shape.pt));
     var angle = Math.PI*2/numPts;
     var rad = animatedToValue(shape.or);
     var roundness = animatedToValue(shape.os) / 100;
     var perimSegment = 2*Math.PI*rad/(numPts*4);
-    var i, currentAng = -Math.PI/ 2;
+    var i, currentAng = -Math.PI/ 2 + (rot/180*Math.PI);
     var dir = shape.d === 3 ? -1 : 1;
     var data = { v: [], i: [], o: [], c: 1 };
     for(i=0;i<numPts;i+=1){
@@ -663,6 +664,8 @@ function createPolygon(shape)
         var y = rad * Math.sin(currentAng);
         var ox = x === 0 && y === 0 ? 0 : y/Math.sqrt(x*x + y*y);
         var oy = x === 0 && y === 0 ? 0 : -x/Math.sqrt(x*x + y*y);
+        x += posx;
+        y += posy;
         data.v[i] = [x,y];
         data.i[i] = [ox*perimSegment*roundness*dir,oy*perimSegment*roundness*dir];
         data.o[i] = [-ox*perimSegment*roundness*dir,-oy*perimSegment*roundness*dir];
@@ -672,7 +675,7 @@ function createPolygon(shape)
 }
 
 /* Copied/modified from https://github.com/airbnb/lottie-web JS player */
-function createStar(shape)
+function createStar(shape, posx, posy, rot)
 {
     var numPts = Math.floor(animatedToValue(shape.pt))*2;
     var angle = Math.PI*2/numPts;
@@ -684,7 +687,7 @@ function createStar(shape)
     var shortRound = animatedToValue(shape.is) / 100;
     var longPerimSegment = 2*Math.PI*longRad/(numPts*2);
     var shortPerimSegment = 2*Math.PI*shortRad/(numPts*2);
-    var i, rad,roundness,perimSegment, currentAng = -Math.PI/ 2;
+    var i, rad,roundness,perimSegment, currentAng = -Math.PI/ 2 + (rot/180*Math.PI);
     var dir = shape.d === 3 ? -1 : 1;
     var data = { v: [], i: [], o: [], c: 1 };
     for(i=0;i<numPts;i+=1){
@@ -695,6 +698,8 @@ function createStar(shape)
         var y = rad * Math.sin(currentAng);
         var ox = x === 0 && y === 0 ? 0 : y/Math.sqrt(x*x + y*y);
         var oy = x === 0 && y === 0 ? 0 : -x/Math.sqrt(x*x + y*y);
+        x += posx;
+        y += posy;
         data.v[i] = [x,y];
         data.i[i] = [ox*perimSegment*roundness*dir,oy*perimSegment*roundness*dir];
         data.o[i] = [-ox*perimSegment*roundness*dir,-oy*perimSegment*roundness*dir];
@@ -820,8 +825,51 @@ function hasDashes(items)
     return stroke && stroke.d;
 }
 
+function createCombinedPathElement(shapes, parentElement)
+{
+    let path = app.activeDocument.createElement("path");
+    path.setProperty("fill", "none");
+    parentElement.insertAt(0, path);
+    copyName(shapes[0], path);
+    let pathData = "";
+    for (let shape of shapes) {
+        if (shape.ty == "sh") {
+            if (shape.ks) {
+                pathData += parsePathData(shape.ks.k, shape.closed);
+            }
+        } else if (shape.ty == "rc") {
+            let pos = multiDimAnimatedToValue(shape.p);
+            pathData += createRect(shape, pos[0], pos[1]);
+        } else if (shape.ty == "el") {
+            pathData += createEllipse(shape);
+        } else if (shape.ty == "sr") {
+            let pos = multiDimAnimatedToValue(shape.p);
+            let rot = animatedToValue(shape.r);
+            if (shape.sy == 2) {
+                pathData += createPolygon(shape, pos[0], pos[1], rot);
+            } else {
+                pathData += createStar(shape, pos[0], pos[1], rot);
+            }
+        }
+    }
+    path.setProperty("d", pathData);
+}
+
 function readShapes(shapes, parentElement, hasDashStroke)
 {
+    // create a combined path if it is possible
+    let containsGroupsOrAnimations = false;
+    for (let shape of shapes) {
+        if (shape.ty == "gr" || (shape.p && shape.p.a == 1) || (shape.r && shape.r.a == 1)) {
+            containsGroupsOrAnimations = true;
+            break;
+        }
+    }
+    if (shapes.length > 1 && !containsGroupsOrAnimations) {
+        createCombinedPathElement(shapes, parentElement);
+        return;
+    }
+    // no combined path - create separate elements
     for (let shape of shapes) {
         if (shape.ty == "sh") {
             let path = app.activeDocument.createElement("path");
@@ -863,7 +911,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 if (shape.p) {
                     copyPropertyXY(shape.p, rect, "ks:position", 1, 0, 0);
                 }
-                rect.setProperty("d", createRect(shape));
+                rect.setProperty("d", createRect(shape, 0, 0));
             }
 
         } else if (shape.ty == "el") {
@@ -881,14 +929,14 @@ function readShapes(shapes, parentElement, hasDashStroke)
                     ellipse.setProperty("ry", s[1]/2);
                 }
             } else {
-                let rect = app.activeDocument.createElement("path");
-                rect.setProperty("fill", "none");
-                parentElement.insertAt(0, rect);
-                copyName(shape, rect);
+                let ellipse = app.activeDocument.createElement("path");
+                ellipse.setProperty("fill", "none");
+                parentElement.insertAt(0, ellipse);
+                copyName(shape, ellipse);
                 if (shape.p) {
-                    copyPropertyXY(shape.p, rect, "ks:position", 1, 0, 0);
+                    copyPropertyXY(shape.p, ellipse, "ks:position", 1, 0, 0);
                 }
-                rect.setProperty("d", createEllipse(shape));
+                ellipse.setProperty("d", createEllipse(shape));
             }
 
         } else if (shape.ty == "sr") {
@@ -901,9 +949,9 @@ function readShapes(shapes, parentElement, hasDashStroke)
             }
             copyProperty(shape.r, star, "ks:rotation", 1);
             if (shape.sy == 2) {
-                star.setProperty("d", createPolygon(shape));
+                star.setProperty("d", createPolygon(shape, 0, 0, 0));
             } else {
-                star.setProperty("d", createStar(shape));
+                star.setProperty("d", createStar(shape, 0, 0, 0));
             }
 
         } else if (shape.ty == "gr") {
