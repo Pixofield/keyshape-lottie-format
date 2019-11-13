@@ -1212,8 +1212,10 @@ function doImport(filenameUrl)
     root.setProperty("ks:playRangeOut", globalOp * globalFrameDur);
 
     // read assets
-    for (let asset of json["assets"]) {
-        globalAssets[asset.id] = asset;
+    if (Array.isArray(json["assets"])) {
+        for (let asset of json["assets"]) {
+            globalAssets[asset.id] = asset;
+        }
     }
 
     readLayers(root, json["layers"]);
