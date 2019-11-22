@@ -860,7 +860,8 @@ function readShapes(shapes, parentElement, hasDashStroke)
     // create a combined path if it is possible
     let containsGroupsOrAnimations = false;
     for (let shape of shapes) {
-        if (shape.ty == "gr" || (shape.p && shape.p.a == 1) || (shape.r && shape.r.a == 1)) {
+        if (shape.ty == "gr" || (shape.p && shape.p.a == 1) || (shape.r && shape.r.a == 1) ||
+                (shape.ks && (shape.ks.a == 1 || Array.isArray(shape.ks.k)))) {
             containsGroupsOrAnimations = true;
             break;
         }
