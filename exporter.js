@@ -983,6 +983,7 @@ function detachFromSymbols(doc, element, hrefStack)
             hrefStack.indexOf(element.getProperty("href")) == -1) {
         hrefStack.push(element.getProperty("href"));
         detachFromSymbols(doc, doc.selectedElements[0], hrefStack);
+        hrefStack.pop();
     }
 }
 
