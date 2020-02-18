@@ -1232,6 +1232,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         op: op,
         w: Math.ceil(width), // round up because iOS viewer can't handle decimals
         h: Math.ceil(height),
+        ddd: 0,
         assets: assets,
         layers: layers,
         markers: markers
