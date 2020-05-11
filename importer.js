@@ -158,19 +158,24 @@ function readProperty(obj, multiplier)
 {
     if (obj.a != 1 && !Array.isArray(obj.k)) {
         return obj.k*multiplier;
-    } else {
-        let kfs = new Map();
-        for (let i = 0; i < obj.k.length; ++i) {
-            let kf = parseKeyframe(obj, i);
-            if (kf) {
-                kfs.set(kf.time, { v: kf.value[0]*multiplier, e: kf.easing });
-            }
-        }
-        return Array.from(kfs, function([key, value]) {
-            return { "time": key, "value": value.v, "easing": value.e };
-        });
-//        return Array.from(kfs, ([key, value]) => { "time": key, "value": value.v, "easing": value.e });
     }
+    let kfs = new Map();
+    for (let i = 0; i < obj.k.length; ++i) {
+        let kf = parseKeyframe(obj, i);
+        if (kf) {
+            kfs.set(kf.time, { v: kf.value[0]*multiplier, e: kf.easing });
+        }
+    }
+    if (kfs.size == 0) { // couldn't get any keyframes (negative times?) -> return the first one
+        let val = obj.k[0]?.s[0];
+        if (isUndefined(val)) {
+            return 0;
+        }
+        return val*multiplier;
+    }
+    return Array.from(kfs, function([key, value]) {
+        return { "time": key, "value": value.v, "easing": value.e };
+    });
 }
 
 function copyProperty(obj, element, targetProperty, multiplier)
