@@ -1,7 +1,7 @@
 {
     "id": "https://github.com/Pixofield/keyshape-lottie-format",
     "name": "Lottie Format",
-    "version": "1.6.1",
+    "version": "1.6.2",
     "description": "Import and export Lottie / Bodymovin files.",
     "keyshape_manifest_version": 1,
     "keyshape_min_version" : "1.10",
