@@ -421,9 +421,9 @@ function copyGradient(obj, element, prop)
     let grad;
     if (obj.t == 2) {
         let rad = len(start, end);
-        grad = "-ks-radial-gradient(userSpaceOnUse "+rad+" "+start[0]+" "+start[1]+" "+start[0]+" "+start[1];
+        grad = "-ks-radial-gradient("+rad+" "+start[0]+" "+start[1]+" "+start[0]+" "+start[1];
     } else {
-        grad = "-ks-linear-gradient(userSpaceOnUse "+start[0]+" "+start[1]+" "+end[0]+" "+end[1];
+        grad = "-ks-linear-gradient("+start[0]+" "+start[1]+" "+end[0]+" "+end[1];
     }
     grad +=" pad matrix(1 0 0 1 0 0), ";
     let cs = [];
