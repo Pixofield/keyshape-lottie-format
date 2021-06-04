@@ -499,7 +499,7 @@ function moveAlphaToOpacity(element, prop, kscolor)
         return;
     }
     if (!element.timeline().hasKeyframes(prop)) {
-        if ((kscolor.alpha || 1) == 1) {
+        if (kscolor.alpha === undefined) {
             return;
         }
         // move non-animated alpha value to opacity (keyframes)
