@@ -47,12 +47,15 @@ function copyName(obj, element)
 
 function parsePathData(data, legacyClose)
 {
-    if (!data.v || !data.i || !data.o) {
+    if (!Array.isArray(data.v) || !Array.isArray(data.i) || !Array.isArray(data.o)) {
         return "";
     }
     let pathValue = "";
     let pt, i = 0;
     for (i = 0; i < data.v.length - 1; i++) {
+        if (!Array.isArray(data.v[i]) || !Array.isArray(data.o[i]) || !Array.isArray(data.i[i])) {
+            break;
+        }
         if (i === 0) {
             pt = [ data.v[0][0], data.v[0][1] ];
             pathValue += 'M' + pt[0] + ' ' + pt[1];
