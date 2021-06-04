@@ -24,6 +24,7 @@ Exporting has few limitations:
 
  * text is converted to paths
  * only top level bitmap images are supported (without width and height animations)
+ * only top level visibility animations are supported
  * blending and orient along path are supported only at the top level objects
  * stroke dashing supports only one dash and gap
  * stroke and fill animations don't support "none" or gradient values

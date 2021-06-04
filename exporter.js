@@ -848,7 +848,9 @@ function multiplyProperty(element, prop, mult)
 // maskParentForTransform is set if this layer is a track matte layer
 function appendLayer(layersArray, element, assets, maskParentForTransform)
 {
-    if (element.getProperty("display") == "none") {
+    let isVisible = element.getProperty("visibility") === "visible" ||
+        element.timeline().hasKeyframes("visibility");
+    if (element.getProperty("display") == "none" || !isVisible) {
         return;
     }
     // preprocess image
@@ -890,6 +892,15 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
     let blend = blendingModes.indexOf(element.getProperty("mix-blend-mode"));
     if (blend < 0) { blend = 0; }
 
+    let ip = 0;
+    let op = globalOpForLayers > 0 ? globalOpForLayers : 1;
+    let visibilityKeyframes = element.timeline().getKeyframes("visibility");
+    if (visibilityKeyframes.length > 1 && visibilityKeyframes[0].value == "visible" &&
+            visibilityKeyframes[1].value == "hidden") {
+        ip = toRoundFrame(visibilityKeyframes[0].time);
+        op = toRoundFrame(visibilityKeyframes[1].time);
+    }
+
     let id = element.getProperty("id");
     let obj = {
         ind: globalLayerIndex,
@@ -897,8 +908,8 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
         ks: transform,
         ao: te.getProperty("ks:motion-rotation") == "auto" &&
             !te.timeline().isSeparated("ks:positionX") ? 1 : 0,
-        ip: 0,
-        op: globalOpForLayers > 0 ? globalOpForLayers : 1,
+        ip: ip,
+        op: op,
         st: 0, // start time
         bm: blend,
         sr: 1 // layer time stretch
