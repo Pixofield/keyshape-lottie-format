@@ -1151,16 +1151,13 @@ function layerToElement(layer)
             ];
             elem.setProperty("mix-blend-mode", blendingModes[layer.bm]);
         }
-        if (layer.ip > globalIp || layer.op < globalOp && !elem.timeline().hasKeyframes("opacity")) {
-            let it = frameToTime(layer.ip);
-            let ot = frameToTime(layer.op);
-            if (it < 0) { it = 0; }
-            if (ot < 0) { ot = 0; }
-            elem.timeline().setKeyframe("opacity", ot, "0");
-            elem.timeline().setKeyframe("opacity", it, "1", "steps(1)");
-            if (it > 0) {
-                elem.timeline().setKeyframe("opacity", 0, "0", "steps(1)");
-            }
+        if (layer.ip > globalIp || layer.op < globalOp) {
+            let ipt = frameToTime(layer.ip);
+            let opt = frameToTime(layer.op);
+            if (ipt < 0) { ipt = 0; }
+            if (opt < 0) { opt = 0; }
+            elem.timeline().setKeyframe("visibility", ipt, "visible", "steps(1)");
+            elem.timeline().setKeyframe("visibility", opt, "hidden", "steps(1)");
         }
     }
     return elem;
