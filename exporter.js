@@ -1233,7 +1233,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     // markers
     let markers = [];
     for (let m of root.timeline().getTimeMarkers()) {
-        markers.push({ "tm": toRoundFrame(m.time), "cm": m.name, "dr": 0 });
+        markers.push({ "tm": toRoundFrame(m.time), "cm": m.name, "dr": toRoundFrame(m.dur) });
     }
 
     let json = {

@@ -1187,6 +1187,7 @@ function readMarkers(rootElement, markers)
     for (let marker of markers) {
         let m = {
             time: (marker.tm || 0) * globalFrameDur,
+            dur: (marker.dr || 0) * globalFrameDur,
             name: marker.cm
         };
         ml.push(m);
