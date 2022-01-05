@@ -10,8 +10,8 @@ It is also possible to open Lottie animation files in Keyshape for editing.
 ## Installing
 
 1. Go to [Releases](https://github.com/Pixofield/keyshape-lottie-format/releases)
-   and download _Lottie-format.keyshapeplugin_
-2. Double-click the downloaded _Lottie-format.keyshapeplugin_ to install it in Keyshape
+   and download _lottie-format.keyshapeplugin_
+2. Double-click the downloaded _lottie-format.keyshapeplugin_ to install it in Keyshape
 
 The plugin can be updated with the same procedure: download the latest release and install it.
 
