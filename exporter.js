@@ -428,11 +428,10 @@ function createGradient(colordata, type)
         t: colordata.type == "radial-gradient" ? 2 : 1
     };
     // TODO: objectBoundingBox
+    let gt = colordata.gradientTransform;
     if (colordata.type == "linear-gradient") {
-        let pt1 = new DOMPoint(colordata.x1, colordata.y1);
-        pt1 = pt1.matrixTransform(colordata.gradientTransform);
-        let pt2 = new DOMPoint(colordata.x2, colordata.y2);
-        pt2 = pt2.matrixTransform(colordata.gradientTransform);
+        let pt1 = new DOMPoint(colordata.x1, colordata.y1).matrixTransform(gt);
+        let pt2 = new DOMPoint(colordata.x2, colordata.y2).matrixTransform(gt);
         gobj.s = {
             a: 0,
             k: [ round(pt1.x), round(pt1.y) ]
@@ -443,17 +442,17 @@ function createGradient(colordata, type)
         };
 
     } else {
-        let ptc = new DOMPoint(colordata.cx, colordata.cy);
-        ptc = ptc.matrixTransform(colordata.gradientTransform);
+        let ptc = new DOMPoint(colordata.fx, colordata.fy).matrixTransform(gt);
         gobj.s = {
             a: 0,
             k: [ round(ptc.x), round(ptc.y) ]
         };
+        let pte = new DOMPoint(colordata.fx + colordata.r, colordata.fy).matrixTransform(gt);
         gobj.e = {
             a: 0,
-            k: [ round(ptc.x + colordata.r), round(ptc.y) ],
+            k: [ round(pte.x), round(pte.y) ],
         };
-        // TODO fx, fy
+        // TODO: cx, cy / fx, fy
         gobj.h = { a: 0, k: 0 };
         gobj.a = { a: 0, k: 0 };
     }
