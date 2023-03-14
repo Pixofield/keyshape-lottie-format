@@ -457,8 +457,11 @@ function createGradient(colordata, type)
         gobj.a = { a: 0, k: 0 };
     }
     let colors = { a: 0, k: [] };
+    if (colordata.stops.length == 0) {
+        colordata.stops.push({ offset: 0, red: 0, green: 0, blue: 0, alpha: 0 });
+    }
+    // color values for gradient stops
     let hasAlpha = false;
-    // solid color values
     for (let stop of colordata.stops) {
         colors.k.push(round(stop.offset));
         colors.k.push(round(stop.red));
