@@ -56,9 +56,16 @@ function parsePathData(data, legacyClose)
         if (!Array.isArray(data.v[i]) || !Array.isArray(data.o[i]) || !Array.isArray(data.i[i])) {
             break;
         }
+        if (data.v[i].lengh < 2 || data.o[i].length < 2 || data.i[i].length < 2) {
+            break;
+        }
         if (i === 0) {
             pt = [ data.v[0][0], data.v[0][1] ];
             pathValue += 'M' + pt[0] + ' ' + pt[1];
+        }
+        if (!Array.isArray(data.v[i + 1]) || !Array.isArray(data.i[i + 1]) ||
+            data.v[i + 1].lengh < 2 || data.i[i + 1].length < 2) {
+            break;
         }
         pt = [ data.o[i][0] + data.v[i][0], data.o[i][1] + data.v[i][1] ];
         pathValue += ' C' + pt[0] + ',' + pt[1];
