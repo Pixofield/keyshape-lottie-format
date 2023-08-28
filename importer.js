@@ -28,12 +28,23 @@ function isUndefined(val)
     return typeof val == 'undefined';
 }
 
+function validateArray(arr, defaultArray)
+{
+    if (!Array.isArray(arr)) {
+        return defaultArray;
+    }
+    for (let i = arr.length; i < defaultArray.length; ++i) {
+        arr[i] = defaultArray[i];
+    }
+    return arr;
+}
+
 function frameToTime(fr)
 {
     return Math.round(fr * globalFrameDur + globalTimeOffset);
 }
 
-function copyName(obj, element)
+function copyNameAndHd(obj, element)
 {
     if (obj.ln) {
         element.setProperty("id", obj.ln);
@@ -195,7 +206,8 @@ function copyProperty(obj, element, targetProperty, processor)
         element.setProperty(targetProperty, processor(obj.k));
     } else {
         let kfs = new Map();
-        for (let i = 0; i < obj.k.length; ++i) {
+        let k = obj.k ?? [];
+        for (let i = 0; i < k.length; ++i) {
             let kf = parseKeyframe(obj, i);
             if (kf) {
                 kfs.set(kf.time, { v: processor(kf.value[0]), e: kf.easing });
@@ -380,6 +392,10 @@ function hexColor(r, g, b)
 
 function colorToCss(r, g, b, a)
 {
+    r = r ?? 0;
+    g = g ?? 0;
+    b = b ?? 0;
+    a = a ?? 1;
     if (a == 1) {
         return hexColor(r, g, b);
     }
@@ -424,12 +440,13 @@ function len(p1, p2)
 
 function copyGradient(obj, element, prop)
 {
-    if (obj.s.a == 1 || obj.e.a == 1 || obj.g.k.a == 1) { // animations are not supported
+    if (!obj) {
         element.setProperty(prop, "#000000");
         return;
     }
-    let start = obj.s.k;
-    let end = obj.e.k;
+    // animated gradients show only the first keyframe
+    let start = validateArray(obj.s?.a != 1 ? obj.s?.k : obj.s?.k?.at(0)?.s, [0, 0]);
+    let end = validateArray(obj.e?.a != 1 ? obj.e?.k : obj.e?.k?.at(0)?.s, [100, 100]);
     let grad;
     if (obj.t == 2) {
         let rad = len(start, end);
@@ -439,8 +456,8 @@ function copyGradient(obj, element, prop)
     }
     grad +=" pad matrix(1 0 0 1 0 0), ";
     let cs = [];
-    let stops = obj.g.k.k;
-    for (let i = 0; i < obj.g.p; ++i) {
+    let stops = validateArray(obj.g?.k?.a != 1 ? obj.g?.k?.k : obj.g?.k?.k?.at(0)?.s, []);
+    for (let i = 0; i < (obj.g?.p ?? 0) && i < stops.length/4; ++i) {
         let offset = stops[i * 4] * 100;
         let r = stops[i * 4 + 1];
         let g = stops[i * 4 + 2];
@@ -831,7 +848,7 @@ function applyMask(layer, element)
         }
         copyOpacity(mask, maskPath);
         let maskElem = app.activeDocument.createElement("mask");
-        copyName(mask, maskElem);
+        copyNameAndHd(mask, maskElem);
         maskElem.append(maskPath);
         element.append(maskElem);
     }
@@ -848,7 +865,7 @@ function createCombinedPathElement(shapes, parentElement)
     let path = app.activeDocument.createElement("path");
     path.setProperty("fill", "none");
     parentElement.insertAt(0, path);
-    copyName(shapes[0], path);
+    copyNameAndHd(shapes[0], path);
     let pathData = "";
     for (let shape of shapes) {
         if (shape.ty == "sh") {
@@ -898,7 +915,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
             let path = app.activeDocument.createElement("path");
             path.setProperty("fill", "none");
             parentElement.insertAt(0, path);
-            copyName(shape, path);
+            copyNameAndHd(shape, path);
             if (shape.ks) {
                 copyPathData(shape.ks, path, shape.d, shape.closed);
             }
@@ -908,7 +925,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 let rect = app.activeDocument.createElement("rect");
                 rect.setProperty("fill", "none");
                 parentElement.insertAt(0, rect);
-                copyName(shape, rect);
+                copyNameAndHd(shape, rect);
                 let w = 0, h = 0;
                 if (shape.s) {
                     let wh = multiDimAnimatedToValue(shape.s);
@@ -934,7 +951,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 let rect = app.activeDocument.createElement("path");
                 rect.setProperty("fill", "none");
                 parentElement.insertAt(0, rect);
-                copyName(shape, rect);
+                copyNameAndHd(shape, rect);
                 if (shape.p) {
                     copyPropertyXY(shape.p, rect, "ks:positionX", "ks:positionY");
                 }
@@ -946,7 +963,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 let ellipse = app.activeDocument.createElement("ellipse");
                 ellipse.setProperty("fill", "none");
                 parentElement.insertAt(0, ellipse);
-                copyName(shape, ellipse);
+                copyNameAndHd(shape, ellipse);
                 if (shape.p) {
                     copyPropertyXY(shape.p, ellipse, "ks:positionX", "ks:positionY");
                 }
@@ -959,7 +976,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 let ellipse = app.activeDocument.createElement("path");
                 ellipse.setProperty("fill", "none");
                 parentElement.insertAt(0, ellipse);
-                copyName(shape, ellipse);
+                copyNameAndHd(shape, ellipse);
                 if (shape.p) {
                     copyPropertyXY(shape.p, ellipse, "ks:positionX", "ks:positionY");
                 }
@@ -970,7 +987,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
             let star = app.activeDocument.createElement("path");
             star.setProperty("fill", "none");
             parentElement.insertAt(0, star);
-            copyName(shape, star);
+            copyNameAndHd(shape, star);
             if (shape.p) {
                 copyPropertyXY(shape.p, star, "ks:positionX", "ks:positionY");
             }
@@ -984,9 +1001,9 @@ function readShapes(shapes, parentElement, hasDashStroke)
         } else if (shape.ty == "gr") {
             let g = app.activeDocument.createElement("g");
             parentElement.insertAt(0, g);
-            copyName(shape, g);
+            copyNameAndHd(shape, g);
             let tr = findType(shape.it, "tr");
-            copyTransform(tr, g, false);
+            copyTransform(tr, g);
             copyOpacity(tr, g);
 
             // read children before setting colors, because colors are set to paths
@@ -1044,7 +1061,7 @@ function layerToElement(layer)
     if (layer.ty == 0) { // precomp
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
-        copyName(layer, elem);
+        copyNameAndHd(layer, elem);
         copyTransform(layer.ks, elem);
         copyOpacity(layer.ks, elem); // TODO: this should affect only precomp, not parented children
         globalTimeOffset += layer.ip * globalFrameDur;
@@ -1057,7 +1074,7 @@ function layerToElement(layer)
     } else if (layer.ty == 1) { // solid
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
-        copyName(layer, elem);
+        copyNameAndHd(layer, elem);
         copyTransform(layer.ks, elem);
         let rect = app.activeDocument.createElement("rect");
         copyOpacity(layer.ks, rect);
@@ -1070,7 +1087,7 @@ function layerToElement(layer)
     } else if (layer.ty == 2) { // image
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
-        copyName(layer, elem);
+        copyNameAndHd(layer, elem);
         copyTransform(layer.ks, elem);
         let image = app.activeDocument.createElement("image");
         copyOpacity(layer.ks, image);
@@ -1094,14 +1111,14 @@ function layerToElement(layer)
     } else if (layer.ty == 3) { // null
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
-        copyName(layer, elem);
+        copyNameAndHd(layer, elem);
         copyTransform(layer.ks, elem);
         // no opacity copying, null is always parented
 
     } else if (layer.ty == 4 && layer["shapes"]) { // shape
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
-        copyName(layer, elem);
+        copyNameAndHd(layer, elem);
         copyTransform(layer.ks, elem);
         readShapes(layer["shapes"], elem, hasDashes(layer["shapes"]));
         applyPainting(layer["shapes"], elem.children);
@@ -1117,7 +1134,7 @@ function layerToElement(layer)
     } else if (layer.ty == 5) { // text
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
-        copyName(layer, elem);
+        copyNameAndHd(layer, elem);
         copyTransform(layer.ks, elem);
         let text = app.activeDocument.createElement("text");
         copyOpacity(layer.ks, text);
@@ -1229,7 +1246,7 @@ function doImport(filenameUrl)
     let h = json["h"];
     let viewBox = "0 0 "+w+" "+h;
     root.setProperty("viewBox", viewBox);
-    copyName(json, app.activeDocument.documentElement);
+    copyNameAndHd(json, app.activeDocument.documentElement);
 
     globalIp = json["ip"] || 0;
     globalOp = json["op"] || 0;
