@@ -75,6 +75,7 @@ function convertEasing(easing)
 
 function toPx(lenvalue, defaultValue = 0)
 {
+    lenvalue = ""+lenvalue;
     let val = parseFloat(lenvalue);
     if (!isFinite(val)) {
         return defaultValue;
@@ -1248,7 +1249,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     let manifestJson = JSON.parse(manifestData);
 
     let json = {
-        v: "5.0.1",
+        v: "5.10.0",
         meta: { g: "Keyshape Lottie plugin v" + manifestJson.version },
         fr: globalFps,
         ip: ip,
