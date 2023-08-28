@@ -1243,8 +1243,13 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
         markers.push({ "tm": toRoundFrame(m.time), "cm": m.name, "dr": toRoundFrame(m.dur) });
     }
 
+    let manifestUrl = app.extension.getURL()+"manifest.json";
+    let manifestData = app.fs.readFileSync(new URL(manifestUrl), { encoding: 'utf-8' });
+    let manifestJson = JSON.parse(manifestData);
+
     let json = {
         v: "5.0.1",
+        meta: { g: "Keyshape Lottie plugin v" + manifestJson.version },
         fr: globalFps,
         ip: ip,
         op: op,
