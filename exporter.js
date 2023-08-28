@@ -491,6 +491,7 @@ const linejoins = [ "miter", "round", "bevel" ];
 
 function parseDashArray(str)
 {
+    str = str.trim();
     if (str == "none") { return [ "0" ]; }
     return str.replace(/,/g, ' ').split(/\s/);
 }
