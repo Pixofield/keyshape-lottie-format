@@ -1681,6 +1681,22 @@
     return renderers[key];
   }
 
+  function getRegisteredRenderer() {
+    // Returns canvas by default for compatibility
+    if (renderers.canvas) {
+      return 'canvas';
+    } // Returns any renderer that is registered
+
+
+    for (var key in renderers) {
+      if (renderers[key]) {
+        return key;
+      }
+    }
+
+    return '';
+  }
+
   function _typeof$4(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof$4 = function _typeof(obj) { return typeof obj; }; } else { _typeof$4 = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof$4(obj); }
 
   var AnimationItem = function AnimationItem() {
@@ -1719,6 +1735,7 @@
     this.onSetupError = this.onSetupError.bind(this);
     this.onSegmentComplete = this.onSegmentComplete.bind(this);
     this.drawnFrameEvent = new BMEnterFrameEvent('drawnFrame', 0, 0, 0);
+    this.expressionsPlugin = getExpressionsPlugin();
   };
 
   extendPrototype([BaseEvent], AnimationItem);
@@ -1802,7 +1819,7 @@
     ? wrapperAttributes.getNamedItem('data-anim-type').value : wrapperAttributes.getNamedItem('data-bm-type') // eslint-disable-line no-nested-ternary
     ? wrapperAttributes.getNamedItem('data-bm-type').value : wrapperAttributes.getNamedItem('bm-type') // eslint-disable-line no-nested-ternary
     ? wrapperAttributes.getNamedItem('bm-type').value : wrapperAttributes.getNamedItem('data-bm-renderer') // eslint-disable-line no-nested-ternary
-    ? wrapperAttributes.getNamedItem('data-bm-renderer').value : wrapperAttributes.getNamedItem('bm-renderer') ? wrapperAttributes.getNamedItem('bm-renderer').value : 'canvas';
+    ? wrapperAttributes.getNamedItem('data-bm-renderer').value : wrapperAttributes.getNamedItem('bm-renderer') ? wrapperAttributes.getNamedItem('bm-renderer').value : getRegisteredRenderer() || 'canvas';
     var loop = wrapperAttributes.getNamedItem('data-anim-loop') // eslint-disable-line no-nested-ternary
     ? wrapperAttributes.getNamedItem('data-anim-loop').value : wrapperAttributes.getNamedItem('data-bm-loop') // eslint-disable-line no-nested-ternary
     ? wrapperAttributes.getNamedItem('data-bm-loop').value : wrapperAttributes.getNamedItem('bm-loop') ? wrapperAttributes.getNamedItem('bm-loop').value : '';
@@ -1830,7 +1847,11 @@
       params.prerender = false;
     }
 
-    this.setParams(params);
+    if (!params.path) {
+      this.trigger('destroy');
+    } else {
+      this.setParams(params);
+    }
   };
 
   AnimationItem.prototype.includeLayers = function (data) {
@@ -2031,6 +2052,10 @@
     }
 
     try {
+      if (this.expressionsPlugin) {
+        this.expressionsPlugin.resetFrame();
+      }
+
       this.renderer.renderFrame(this.currentFrame + this.firstFrame);
     } catch (error) {
       this.triggerRenderFrameError(error);
@@ -2044,7 +2069,7 @@
 
     if (this.isPaused === true) {
       this.isPaused = false;
-      this.trigger('_pause');
+      this.trigger('_play');
       this.audioController.resume();
 
       if (this._idle) {
@@ -2061,7 +2086,7 @@
 
     if (this.isPaused === false) {
       this.isPaused = true;
-      this.trigger('_play');
+      this.trigger('_pause');
       this._idle = true;
       this.trigger('_idle');
       this.audioController.pause();
@@ -2316,7 +2341,7 @@
     this.onSegmentStart = null;
     this.onDestroy = null;
     this.renderer = null;
-    this.renderer = null;
+    this.expressionsPlugin = null;
     this.imagePreloader = null;
     this.projectInterface = null;
   };
@@ -3315,497 +3340,501 @@
 
   var bez = bezFunction();
 
-  var PropertyFactory = function () {
-    var initFrame = initialDefaultFrame;
-    var mathAbs = Math.abs;
+  var initFrame = initialDefaultFrame;
+  var mathAbs = Math.abs;
 
-    function interpolateValue(frameNum, caching) {
-      var offsetTime = this.offsetTime;
-      var newValue;
+  function interpolateValue(frameNum, caching) {
+    var offsetTime = this.offsetTime;
+    var newValue;
 
-      if (this.propType === 'multidimensional') {
-        newValue = createTypedArray('float32', this.pv.length);
+    if (this.propType === 'multidimensional') {
+      newValue = createTypedArray('float32', this.pv.length);
+    }
+
+    var iterationIndex = caching.lastIndex;
+    var i = iterationIndex;
+    var len = this.keyframes.length - 1;
+    var flag = true;
+    var keyData;
+    var nextKeyData;
+    var keyframeMetadata;
+
+    while (flag) {
+      keyData = this.keyframes[i];
+      nextKeyData = this.keyframes[i + 1];
+
+      if (i === len - 1 && frameNum >= nextKeyData.t - offsetTime) {
+        if (keyData.h) {
+          keyData = nextKeyData;
+        }
+
+        iterationIndex = 0;
+        break;
       }
 
-      var iterationIndex = caching.lastIndex;
-      var i = iterationIndex;
-      var len = this.keyframes.length - 1;
-      var flag = true;
-      var keyData;
-      var nextKeyData;
-      var keyframeMetadata;
+      if (nextKeyData.t - offsetTime > frameNum) {
+        iterationIndex = i;
+        break;
+      }
 
-      while (flag) {
-        keyData = this.keyframes[i];
-        nextKeyData = this.keyframes[i + 1];
+      if (i < len - 1) {
+        i += 1;
+      } else {
+        iterationIndex = 0;
+        flag = false;
+      }
+    }
 
-        if (i === len - 1 && frameNum >= nextKeyData.t - offsetTime) {
-          if (keyData.h) {
-            keyData = nextKeyData;
+    keyframeMetadata = this.keyframesMetadata[i] || {};
+    var k;
+    var kLen;
+    var perc;
+    var jLen;
+    var j;
+    var fnc;
+    var nextKeyTime = nextKeyData.t - offsetTime;
+    var keyTime = keyData.t - offsetTime;
+    var endValue;
+
+    if (keyData.to) {
+      if (!keyframeMetadata.bezierData) {
+        keyframeMetadata.bezierData = bez.buildBezierData(keyData.s, nextKeyData.s || keyData.e, keyData.to, keyData.ti);
+      }
+
+      var bezierData = keyframeMetadata.bezierData;
+
+      if (frameNum >= nextKeyTime || frameNum < keyTime) {
+        var ind = frameNum >= nextKeyTime ? bezierData.points.length - 1 : 0;
+        kLen = bezierData.points[ind].point.length;
+
+        for (k = 0; k < kLen; k += 1) {
+          newValue[k] = bezierData.points[ind].point[k];
+        } // caching._lastKeyframeIndex = -1;
+
+      } else {
+        if (keyframeMetadata.__fnct) {
+          fnc = keyframeMetadata.__fnct;
+        } else {
+          fnc = BezierFactory.getBezierEasing(keyData.o.x, keyData.o.y, keyData.i.x, keyData.i.y, keyData.n).get;
+          keyframeMetadata.__fnct = fnc;
+        }
+
+        perc = fnc((frameNum - keyTime) / (nextKeyTime - keyTime));
+        var distanceInLine = bezierData.segmentLength * perc;
+        var segmentPerc;
+        var addedLength = caching.lastFrame < frameNum && caching._lastKeyframeIndex === i ? caching._lastAddedLength : 0;
+        j = caching.lastFrame < frameNum && caching._lastKeyframeIndex === i ? caching._lastPoint : 0;
+        flag = true;
+        jLen = bezierData.points.length;
+
+        while (flag) {
+          addedLength += bezierData.points[j].partialLength;
+
+          if (distanceInLine === 0 || perc === 0 || j === bezierData.points.length - 1) {
+            kLen = bezierData.points[j].point.length;
+
+            for (k = 0; k < kLen; k += 1) {
+              newValue[k] = bezierData.points[j].point[k];
+            }
+
+            break;
+          } else if (distanceInLine >= addedLength && distanceInLine < addedLength + bezierData.points[j + 1].partialLength) {
+            segmentPerc = (distanceInLine - addedLength) / bezierData.points[j + 1].partialLength;
+            kLen = bezierData.points[j].point.length;
+
+            for (k = 0; k < kLen; k += 1) {
+              newValue[k] = bezierData.points[j].point[k] + (bezierData.points[j + 1].point[k] - bezierData.points[j].point[k]) * segmentPerc;
+            }
+
+            break;
           }
 
-          iterationIndex = 0;
-          break;
-        }
-
-        if (nextKeyData.t - offsetTime > frameNum) {
-          iterationIndex = i;
-          break;
-        }
-
-        if (i < len - 1) {
-          i += 1;
-        } else {
-          iterationIndex = 0;
-          flag = false;
-        }
-      }
-
-      keyframeMetadata = this.keyframesMetadata[i] || {};
-      var k;
-      var kLen;
-      var perc;
-      var jLen;
-      var j;
-      var fnc;
-      var nextKeyTime = nextKeyData.t - offsetTime;
-      var keyTime = keyData.t - offsetTime;
-      var endValue;
-
-      if (keyData.to) {
-        if (!keyframeMetadata.bezierData) {
-          keyframeMetadata.bezierData = bez.buildBezierData(keyData.s, nextKeyData.s || keyData.e, keyData.to, keyData.ti);
-        }
-
-        var bezierData = keyframeMetadata.bezierData;
-
-        if (frameNum >= nextKeyTime || frameNum < keyTime) {
-          var ind = frameNum >= nextKeyTime ? bezierData.points.length - 1 : 0;
-          kLen = bezierData.points[ind].point.length;
-
-          for (k = 0; k < kLen; k += 1) {
-            newValue[k] = bezierData.points[ind].point[k];
-          } // caching._lastKeyframeIndex = -1;
-
-        } else {
-          if (keyframeMetadata.__fnct) {
-            fnc = keyframeMetadata.__fnct;
+          if (j < jLen - 1) {
+            j += 1;
           } else {
-            fnc = BezierFactory.getBezierEasing(keyData.o.x, keyData.o.y, keyData.i.x, keyData.i.y, keyData.n).get;
-            keyframeMetadata.__fnct = fnc;
+            flag = false;
           }
+        }
 
-          perc = fnc((frameNum - keyTime) / (nextKeyTime - keyTime));
-          var distanceInLine = bezierData.segmentLength * perc;
-          var segmentPerc;
-          var addedLength = caching.lastFrame < frameNum && caching._lastKeyframeIndex === i ? caching._lastAddedLength : 0;
-          j = caching.lastFrame < frameNum && caching._lastKeyframeIndex === i ? caching._lastPoint : 0;
-          flag = true;
-          jLen = bezierData.points.length;
+        caching._lastPoint = j;
+        caching._lastAddedLength = addedLength - bezierData.points[j].partialLength;
+        caching._lastKeyframeIndex = i;
+      }
+    } else {
+      var outX;
+      var outY;
+      var inX;
+      var inY;
+      var keyValue;
+      len = keyData.s.length;
+      endValue = nextKeyData.s || keyData.e;
 
-          while (flag) {
-            addedLength += bezierData.points[j].partialLength;
-
-            if (distanceInLine === 0 || perc === 0 || j === bezierData.points.length - 1) {
-              kLen = bezierData.points[j].point.length;
-
-              for (k = 0; k < kLen; k += 1) {
-                newValue[k] = bezierData.points[j].point[k];
-              }
-
-              break;
-            } else if (distanceInLine >= addedLength && distanceInLine < addedLength + bezierData.points[j + 1].partialLength) {
-              segmentPerc = (distanceInLine - addedLength) / bezierData.points[j + 1].partialLength;
-              kLen = bezierData.points[j].point.length;
-
-              for (k = 0; k < kLen; k += 1) {
-                newValue[k] = bezierData.points[j].point[k] + (bezierData.points[j + 1].point[k] - bezierData.points[j].point[k]) * segmentPerc;
-              }
-
-              break;
-            }
-
-            if (j < jLen - 1) {
-              j += 1;
-            } else {
-              flag = false;
-            }
-          }
-
-          caching._lastPoint = j;
-          caching._lastAddedLength = addedLength - bezierData.points[j].partialLength;
-          caching._lastKeyframeIndex = i;
+      if (this.sh && keyData.h !== 1) {
+        if (frameNum >= nextKeyTime) {
+          newValue[0] = endValue[0];
+          newValue[1] = endValue[1];
+          newValue[2] = endValue[2];
+        } else if (frameNum <= keyTime) {
+          newValue[0] = keyData.s[0];
+          newValue[1] = keyData.s[1];
+          newValue[2] = keyData.s[2];
+        } else {
+          var quatStart = createQuaternion(keyData.s);
+          var quatEnd = createQuaternion(endValue);
+          var time = (frameNum - keyTime) / (nextKeyTime - keyTime);
+          quaternionToEuler(newValue, slerp(quatStart, quatEnd, time));
         }
       } else {
-        var outX;
-        var outY;
-        var inX;
-        var inY;
-        var keyValue;
-        len = keyData.s.length;
-        endValue = nextKeyData.s || keyData.e;
-
-        if (this.sh && keyData.h !== 1) {
-          if (frameNum >= nextKeyTime) {
-            newValue[0] = endValue[0];
-            newValue[1] = endValue[1];
-            newValue[2] = endValue[2];
-          } else if (frameNum <= keyTime) {
-            newValue[0] = keyData.s[0];
-            newValue[1] = keyData.s[1];
-            newValue[2] = keyData.s[2];
-          } else {
-            var quatStart = createQuaternion(keyData.s);
-            var quatEnd = createQuaternion(endValue);
-            var time = (frameNum - keyTime) / (nextKeyTime - keyTime);
-            quaternionToEuler(newValue, slerp(quatStart, quatEnd, time));
-          }
-        } else {
-          for (i = 0; i < len; i += 1) {
-            if (keyData.h !== 1) {
-              if (frameNum >= nextKeyTime) {
-                perc = 1;
-              } else if (frameNum < keyTime) {
-                perc = 0;
-              } else {
-                if (keyData.o.x.constructor === Array) {
-                  if (!keyframeMetadata.__fnct) {
-                    keyframeMetadata.__fnct = [];
-                  }
-
-                  if (!keyframeMetadata.__fnct[i]) {
-                    outX = keyData.o.x[i] === undefined ? keyData.o.x[0] : keyData.o.x[i];
-                    outY = keyData.o.y[i] === undefined ? keyData.o.y[0] : keyData.o.y[i];
-                    inX = keyData.i.x[i] === undefined ? keyData.i.x[0] : keyData.i.x[i];
-                    inY = keyData.i.y[i] === undefined ? keyData.i.y[0] : keyData.i.y[i];
-                    fnc = BezierFactory.getBezierEasing(outX, outY, inX, inY).get;
-                    keyframeMetadata.__fnct[i] = fnc;
-                  } else {
-                    fnc = keyframeMetadata.__fnct[i];
-                  }
-                } else if (!keyframeMetadata.__fnct) {
-                  outX = keyData.o.x;
-                  outY = keyData.o.y;
-                  inX = keyData.i.x;
-                  inY = keyData.i.y;
-                  fnc = BezierFactory.getBezierEasing(outX, outY, inX, inY).get;
-                  keyData.keyframeMetadata = fnc;
-                } else {
-                  fnc = keyframeMetadata.__fnct;
+        for (i = 0; i < len; i += 1) {
+          if (keyData.h !== 1) {
+            if (frameNum >= nextKeyTime) {
+              perc = 1;
+            } else if (frameNum < keyTime) {
+              perc = 0;
+            } else {
+              if (keyData.o.x.constructor === Array) {
+                if (!keyframeMetadata.__fnct) {
+                  keyframeMetadata.__fnct = [];
                 }
 
-                perc = fnc((frameNum - keyTime) / (nextKeyTime - keyTime));
+                if (!keyframeMetadata.__fnct[i]) {
+                  outX = keyData.o.x[i] === undefined ? keyData.o.x[0] : keyData.o.x[i];
+                  outY = keyData.o.y[i] === undefined ? keyData.o.y[0] : keyData.o.y[i];
+                  inX = keyData.i.x[i] === undefined ? keyData.i.x[0] : keyData.i.x[i];
+                  inY = keyData.i.y[i] === undefined ? keyData.i.y[0] : keyData.i.y[i];
+                  fnc = BezierFactory.getBezierEasing(outX, outY, inX, inY).get;
+                  keyframeMetadata.__fnct[i] = fnc;
+                } else {
+                  fnc = keyframeMetadata.__fnct[i];
+                }
+              } else if (!keyframeMetadata.__fnct) {
+                outX = keyData.o.x;
+                outY = keyData.o.y;
+                inX = keyData.i.x;
+                inY = keyData.i.y;
+                fnc = BezierFactory.getBezierEasing(outX, outY, inX, inY).get;
+                keyData.keyframeMetadata = fnc;
+              } else {
+                fnc = keyframeMetadata.__fnct;
               }
-            }
 
-            endValue = nextKeyData.s || keyData.e;
-            keyValue = keyData.h === 1 ? keyData.s[i] : keyData.s[i] + (endValue[i] - keyData.s[i]) * perc;
-
-            if (this.propType === 'multidimensional') {
-              newValue[i] = keyValue;
-            } else {
-              newValue = keyValue;
+              perc = fnc((frameNum - keyTime) / (nextKeyTime - keyTime));
             }
+          }
+
+          endValue = nextKeyData.s || keyData.e;
+          keyValue = keyData.h === 1 ? keyData.s[i] : keyData.s[i] + (endValue[i] - keyData.s[i]) * perc;
+
+          if (this.propType === 'multidimensional') {
+            newValue[i] = keyValue;
+          } else {
+            newValue = keyValue;
           }
         }
       }
+    }
 
-      caching.lastIndex = iterationIndex;
-      return newValue;
-    } // based on @Toji's https://github.com/toji/gl-matrix/
+    caching.lastIndex = iterationIndex;
+    return newValue;
+  } // based on @Toji's https://github.com/toji/gl-matrix/
 
 
-    function slerp(a, b, t) {
-      var out = [];
-      var ax = a[0];
-      var ay = a[1];
-      var az = a[2];
-      var aw = a[3];
-      var bx = b[0];
-      var by = b[1];
-      var bz = b[2];
-      var bw = b[3];
-      var omega;
-      var cosom;
-      var sinom;
-      var scale0;
-      var scale1;
-      cosom = ax * bx + ay * by + az * bz + aw * bw;
+  function slerp(a, b, t) {
+    var out = [];
+    var ax = a[0];
+    var ay = a[1];
+    var az = a[2];
+    var aw = a[3];
+    var bx = b[0];
+    var by = b[1];
+    var bz = b[2];
+    var bw = b[3];
+    var omega;
+    var cosom;
+    var sinom;
+    var scale0;
+    var scale1;
+    cosom = ax * bx + ay * by + az * bz + aw * bw;
 
-      if (cosom < 0.0) {
-        cosom = -cosom;
-        bx = -bx;
-        by = -by;
-        bz = -bz;
-        bw = -bw;
+    if (cosom < 0.0) {
+      cosom = -cosom;
+      bx = -bx;
+      by = -by;
+      bz = -bz;
+      bw = -bw;
+    }
+
+    if (1.0 - cosom > 0.000001) {
+      omega = Math.acos(cosom);
+      sinom = Math.sin(omega);
+      scale0 = Math.sin((1.0 - t) * omega) / sinom;
+      scale1 = Math.sin(t * omega) / sinom;
+    } else {
+      scale0 = 1.0 - t;
+      scale1 = t;
+    }
+
+    out[0] = scale0 * ax + scale1 * bx;
+    out[1] = scale0 * ay + scale1 * by;
+    out[2] = scale0 * az + scale1 * bz;
+    out[3] = scale0 * aw + scale1 * bw;
+    return out;
+  }
+
+  function quaternionToEuler(out, quat) {
+    var qx = quat[0];
+    var qy = quat[1];
+    var qz = quat[2];
+    var qw = quat[3];
+    var heading = Math.atan2(2 * qy * qw - 2 * qx * qz, 1 - 2 * qy * qy - 2 * qz * qz);
+    var attitude = Math.asin(2 * qx * qy + 2 * qz * qw);
+    var bank = Math.atan2(2 * qx * qw - 2 * qy * qz, 1 - 2 * qx * qx - 2 * qz * qz);
+    out[0] = heading / degToRads;
+    out[1] = attitude / degToRads;
+    out[2] = bank / degToRads;
+  }
+
+  function createQuaternion(values) {
+    var heading = values[0] * degToRads;
+    var attitude = values[1] * degToRads;
+    var bank = values[2] * degToRads;
+    var c1 = Math.cos(heading / 2);
+    var c2 = Math.cos(attitude / 2);
+    var c3 = Math.cos(bank / 2);
+    var s1 = Math.sin(heading / 2);
+    var s2 = Math.sin(attitude / 2);
+    var s3 = Math.sin(bank / 2);
+    var w = c1 * c2 * c3 - s1 * s2 * s3;
+    var x = s1 * s2 * c3 + c1 * c2 * s3;
+    var y = s1 * c2 * c3 + c1 * s2 * s3;
+    var z = c1 * s2 * c3 - s1 * c2 * s3;
+    return [x, y, z, w];
+  }
+
+  function getValueAtCurrentTime() {
+    var frameNum = this.comp.renderedFrame - this.offsetTime;
+    var initTime = this.keyframes[0].t - this.offsetTime;
+    var endTime = this.keyframes[this.keyframes.length - 1].t - this.offsetTime;
+
+    if (!(frameNum === this._caching.lastFrame || this._caching.lastFrame !== initFrame && (this._caching.lastFrame >= endTime && frameNum >= endTime || this._caching.lastFrame < initTime && frameNum < initTime))) {
+      if (this._caching.lastFrame >= frameNum) {
+        this._caching._lastKeyframeIndex = -1;
+        this._caching.lastIndex = 0;
       }
 
-      if (1.0 - cosom > 0.000001) {
-        omega = Math.acos(cosom);
-        sinom = Math.sin(omega);
-        scale0 = Math.sin((1.0 - t) * omega) / sinom;
-        scale1 = Math.sin(t * omega) / sinom;
-      } else {
-        scale0 = 1.0 - t;
-        scale1 = t;
+      var renderResult = this.interpolateValue(frameNum, this._caching);
+      this.pv = renderResult;
+    }
+
+    this._caching.lastFrame = frameNum;
+    return this.pv;
+  }
+
+  function setVValue(val) {
+    var multipliedValue;
+
+    if (this.propType === 'unidimensional') {
+      multipliedValue = val * this.mult;
+
+      if (mathAbs(this.v - multipliedValue) > 0.00001) {
+        this.v = multipliedValue;
+        this._mdf = true;
       }
+    } else {
+      var i = 0;
+      var len = this.v.length;
 
-      out[0] = scale0 * ax + scale1 * bx;
-      out[1] = scale0 * ay + scale1 * by;
-      out[2] = scale0 * az + scale1 * bz;
-      out[3] = scale0 * aw + scale1 * bw;
-      return out;
-    }
+      while (i < len) {
+        multipliedValue = val[i] * this.mult;
 
-    function quaternionToEuler(out, quat) {
-      var qx = quat[0];
-      var qy = quat[1];
-      var qz = quat[2];
-      var qw = quat[3];
-      var heading = Math.atan2(2 * qy * qw - 2 * qx * qz, 1 - 2 * qy * qy - 2 * qz * qz);
-      var attitude = Math.asin(2 * qx * qy + 2 * qz * qw);
-      var bank = Math.atan2(2 * qx * qw - 2 * qy * qz, 1 - 2 * qx * qx - 2 * qz * qz);
-      out[0] = heading / degToRads;
-      out[1] = attitude / degToRads;
-      out[2] = bank / degToRads;
-    }
-
-    function createQuaternion(values) {
-      var heading = values[0] * degToRads;
-      var attitude = values[1] * degToRads;
-      var bank = values[2] * degToRads;
-      var c1 = Math.cos(heading / 2);
-      var c2 = Math.cos(attitude / 2);
-      var c3 = Math.cos(bank / 2);
-      var s1 = Math.sin(heading / 2);
-      var s2 = Math.sin(attitude / 2);
-      var s3 = Math.sin(bank / 2);
-      var w = c1 * c2 * c3 - s1 * s2 * s3;
-      var x = s1 * s2 * c3 + c1 * c2 * s3;
-      var y = s1 * c2 * c3 + c1 * s2 * s3;
-      var z = c1 * s2 * c3 - s1 * c2 * s3;
-      return [x, y, z, w];
-    }
-
-    function getValueAtCurrentTime() {
-      var frameNum = this.comp.renderedFrame - this.offsetTime;
-      var initTime = this.keyframes[0].t - this.offsetTime;
-      var endTime = this.keyframes[this.keyframes.length - 1].t - this.offsetTime;
-
-      if (!(frameNum === this._caching.lastFrame || this._caching.lastFrame !== initFrame && (this._caching.lastFrame >= endTime && frameNum >= endTime || this._caching.lastFrame < initTime && frameNum < initTime))) {
-        if (this._caching.lastFrame >= frameNum) {
-          this._caching._lastKeyframeIndex = -1;
-          this._caching.lastIndex = 0;
-        }
-
-        var renderResult = this.interpolateValue(frameNum, this._caching);
-        this.pv = renderResult;
-      }
-
-      this._caching.lastFrame = frameNum;
-      return this.pv;
-    }
-
-    function setVValue(val) {
-      var multipliedValue;
-
-      if (this.propType === 'unidimensional') {
-        multipliedValue = val * this.mult;
-
-        if (mathAbs(this.v - multipliedValue) > 0.00001) {
-          this.v = multipliedValue;
+        if (mathAbs(this.v[i] - multipliedValue) > 0.00001) {
+          this.v[i] = multipliedValue;
           this._mdf = true;
         }
-      } else {
-        var i = 0;
-        var len = this.v.length;
 
-        while (i < len) {
-          multipliedValue = val[i] * this.mult;
+        i += 1;
+      }
+    }
+  }
 
-          if (mathAbs(this.v[i] - multipliedValue) > 0.00001) {
-            this.v[i] = multipliedValue;
-            this._mdf = true;
-          }
+  function processEffectsSequence() {
+    if (this.elem.globalData.frameId === this.frameId || !this.effectsSequence.length) {
+      return;
+    }
 
-          i += 1;
+    if (this.lock) {
+      this.setVValue(this.pv);
+      return;
+    }
+
+    this.lock = true;
+    this._mdf = this._isFirstFrame;
+    var i;
+    var len = this.effectsSequence.length;
+    var finalValue = this.kf ? this.pv : this.data.k;
+
+    for (i = 0; i < len; i += 1) {
+      finalValue = this.effectsSequence[i](finalValue);
+    }
+
+    this.setVValue(finalValue);
+    this._isFirstFrame = false;
+    this.lock = false;
+    this.frameId = this.elem.globalData.frameId;
+  }
+
+  function addEffect(effectFunction) {
+    this.effectsSequence.push(effectFunction);
+    this.container.addDynamicProperty(this);
+  }
+
+  function ValueProperty(elem, data, mult, container) {
+    this.propType = 'unidimensional';
+    this.mult = mult || 1;
+    this.data = data;
+    this.v = mult ? data.k * mult : data.k;
+    this.pv = data.k;
+    this._mdf = false;
+    this.elem = elem;
+    this.container = container;
+    this.comp = elem.comp;
+    this.k = false;
+    this.kf = false;
+    this.vel = 0;
+    this.effectsSequence = [];
+    this._isFirstFrame = true;
+    this.getValue = processEffectsSequence;
+    this.setVValue = setVValue;
+    this.addEffect = addEffect;
+  }
+
+  function MultiDimensionalProperty(elem, data, mult, container) {
+    this.propType = 'multidimensional';
+    this.mult = mult || 1;
+    this.data = data;
+    this._mdf = false;
+    this.elem = elem;
+    this.container = container;
+    this.comp = elem.comp;
+    this.k = false;
+    this.kf = false;
+    this.frameId = -1;
+    var i;
+    var len = data.k.length;
+    this.v = createTypedArray('float32', len);
+    this.pv = createTypedArray('float32', len);
+    this.vel = createTypedArray('float32', len);
+
+    for (i = 0; i < len; i += 1) {
+      this.v[i] = data.k[i] * this.mult;
+      this.pv[i] = data.k[i];
+    }
+
+    this._isFirstFrame = true;
+    this.effectsSequence = [];
+    this.getValue = processEffectsSequence;
+    this.setVValue = setVValue;
+    this.addEffect = addEffect;
+  }
+
+  function KeyframedValueProperty(elem, data, mult, container) {
+    this.propType = 'unidimensional';
+    this.keyframes = data.k;
+    this.keyframesMetadata = [];
+    this.offsetTime = elem.data.st;
+    this.frameId = -1;
+    this._caching = {
+      lastFrame: initFrame,
+      lastIndex: 0,
+      value: 0,
+      _lastKeyframeIndex: -1
+    };
+    this.k = true;
+    this.kf = true;
+    this.data = data;
+    this.mult = mult || 1;
+    this.elem = elem;
+    this.container = container;
+    this.comp = elem.comp;
+    this.v = initFrame;
+    this.pv = initFrame;
+    this._isFirstFrame = true;
+    this.getValue = processEffectsSequence;
+    this.setVValue = setVValue;
+    this.interpolateValue = interpolateValue;
+    this.effectsSequence = [getValueAtCurrentTime.bind(this)];
+    this.addEffect = addEffect;
+  }
+
+  function KeyframedMultidimensionalProperty(elem, data, mult, container) {
+    this.propType = 'multidimensional';
+    var i;
+    var len = data.k.length;
+    var s;
+    var e;
+    var to;
+    var ti;
+
+    for (i = 0; i < len - 1; i += 1) {
+      if (data.k[i].to && data.k[i].s && data.k[i + 1] && data.k[i + 1].s) {
+        s = data.k[i].s;
+        e = data.k[i + 1].s;
+        to = data.k[i].to;
+        ti = data.k[i].ti;
+
+        if (s.length === 2 && !(s[0] === e[0] && s[1] === e[1]) && bez.pointOnLine2D(s[0], s[1], e[0], e[1], s[0] + to[0], s[1] + to[1]) && bez.pointOnLine2D(s[0], s[1], e[0], e[1], e[0] + ti[0], e[1] + ti[1]) || s.length === 3 && !(s[0] === e[0] && s[1] === e[1] && s[2] === e[2]) && bez.pointOnLine3D(s[0], s[1], s[2], e[0], e[1], e[2], s[0] + to[0], s[1] + to[1], s[2] + to[2]) && bez.pointOnLine3D(s[0], s[1], s[2], e[0], e[1], e[2], e[0] + ti[0], e[1] + ti[1], e[2] + ti[2])) {
+          data.k[i].to = null;
+          data.k[i].ti = null;
         }
-      }
-    }
 
-    function processEffectsSequence() {
-      if (this.elem.globalData.frameId === this.frameId || !this.effectsSequence.length) {
-        return;
-      }
-
-      if (this.lock) {
-        this.setVValue(this.pv);
-        return;
-      }
-
-      this.lock = true;
-      this._mdf = this._isFirstFrame;
-      var i;
-      var len = this.effectsSequence.length;
-      var finalValue = this.kf ? this.pv : this.data.k;
-
-      for (i = 0; i < len; i += 1) {
-        finalValue = this.effectsSequence[i](finalValue);
-      }
-
-      this.setVValue(finalValue);
-      this._isFirstFrame = false;
-      this.lock = false;
-      this.frameId = this.elem.globalData.frameId;
-    }
-
-    function addEffect(effectFunction) {
-      this.effectsSequence.push(effectFunction);
-      this.container.addDynamicProperty(this);
-    }
-
-    function ValueProperty(elem, data, mult, container) {
-      this.propType = 'unidimensional';
-      this.mult = mult || 1;
-      this.data = data;
-      this.v = mult ? data.k * mult : data.k;
-      this.pv = data.k;
-      this._mdf = false;
-      this.elem = elem;
-      this.container = container;
-      this.comp = elem.comp;
-      this.k = false;
-      this.kf = false;
-      this.vel = 0;
-      this.effectsSequence = [];
-      this._isFirstFrame = true;
-      this.getValue = processEffectsSequence;
-      this.setVValue = setVValue;
-      this.addEffect = addEffect;
-    }
-
-    function MultiDimensionalProperty(elem, data, mult, container) {
-      this.propType = 'multidimensional';
-      this.mult = mult || 1;
-      this.data = data;
-      this._mdf = false;
-      this.elem = elem;
-      this.container = container;
-      this.comp = elem.comp;
-      this.k = false;
-      this.kf = false;
-      this.frameId = -1;
-      var i;
-      var len = data.k.length;
-      this.v = createTypedArray('float32', len);
-      this.pv = createTypedArray('float32', len);
-      this.vel = createTypedArray('float32', len);
-
-      for (i = 0; i < len; i += 1) {
-        this.v[i] = data.k[i] * this.mult;
-        this.pv[i] = data.k[i];
-      }
-
-      this._isFirstFrame = true;
-      this.effectsSequence = [];
-      this.getValue = processEffectsSequence;
-      this.setVValue = setVValue;
-      this.addEffect = addEffect;
-    }
-
-    function KeyframedValueProperty(elem, data, mult, container) {
-      this.propType = 'unidimensional';
-      this.keyframes = data.k;
-      this.keyframesMetadata = [];
-      this.offsetTime = elem.data.st;
-      this.frameId = -1;
-      this._caching = {
-        lastFrame: initFrame,
-        lastIndex: 0,
-        value: 0,
-        _lastKeyframeIndex: -1
-      };
-      this.k = true;
-      this.kf = true;
-      this.data = data;
-      this.mult = mult || 1;
-      this.elem = elem;
-      this.container = container;
-      this.comp = elem.comp;
-      this.v = initFrame;
-      this.pv = initFrame;
-      this._isFirstFrame = true;
-      this.getValue = processEffectsSequence;
-      this.setVValue = setVValue;
-      this.interpolateValue = interpolateValue;
-      this.effectsSequence = [getValueAtCurrentTime.bind(this)];
-      this.addEffect = addEffect;
-    }
-
-    function KeyframedMultidimensionalProperty(elem, data, mult, container) {
-      this.propType = 'multidimensional';
-      var i;
-      var len = data.k.length;
-      var s;
-      var e;
-      var to;
-      var ti;
-
-      for (i = 0; i < len - 1; i += 1) {
-        if (data.k[i].to && data.k[i].s && data.k[i + 1] && data.k[i + 1].s) {
-          s = data.k[i].s;
-          e = data.k[i + 1].s;
-          to = data.k[i].to;
-          ti = data.k[i].ti;
-
-          if (s.length === 2 && !(s[0] === e[0] && s[1] === e[1]) && bez.pointOnLine2D(s[0], s[1], e[0], e[1], s[0] + to[0], s[1] + to[1]) && bez.pointOnLine2D(s[0], s[1], e[0], e[1], e[0] + ti[0], e[1] + ti[1]) || s.length === 3 && !(s[0] === e[0] && s[1] === e[1] && s[2] === e[2]) && bez.pointOnLine3D(s[0], s[1], s[2], e[0], e[1], e[2], s[0] + to[0], s[1] + to[1], s[2] + to[2]) && bez.pointOnLine3D(s[0], s[1], s[2], e[0], e[1], e[2], e[0] + ti[0], e[1] + ti[1], e[2] + ti[2])) {
+        if (s[0] === e[0] && s[1] === e[1] && to[0] === 0 && to[1] === 0 && ti[0] === 0 && ti[1] === 0) {
+          if (s.length === 2 || s[2] === e[2] && to[2] === 0 && ti[2] === 0) {
             data.k[i].to = null;
             data.k[i].ti = null;
           }
-
-          if (s[0] === e[0] && s[1] === e[1] && to[0] === 0 && to[1] === 0 && ti[0] === 0 && ti[1] === 0) {
-            if (s.length === 2 || s[2] === e[2] && to[2] === 0 && ti[2] === 0) {
-              data.k[i].to = null;
-              data.k[i].ti = null;
-            }
-          }
         }
       }
-
-      this.effectsSequence = [getValueAtCurrentTime.bind(this)];
-      this.data = data;
-      this.keyframes = data.k;
-      this.keyframesMetadata = [];
-      this.offsetTime = elem.data.st;
-      this.k = true;
-      this.kf = true;
-      this._isFirstFrame = true;
-      this.mult = mult || 1;
-      this.elem = elem;
-      this.container = container;
-      this.comp = elem.comp;
-      this.getValue = processEffectsSequence;
-      this.setVValue = setVValue;
-      this.interpolateValue = interpolateValue;
-      this.frameId = -1;
-      var arrLen = data.k[0].s.length;
-      this.v = createTypedArray('float32', arrLen);
-      this.pv = createTypedArray('float32', arrLen);
-
-      for (i = 0; i < arrLen; i += 1) {
-        this.v[i] = initFrame;
-        this.pv[i] = initFrame;
-      }
-
-      this._caching = {
-        lastFrame: initFrame,
-        lastIndex: 0,
-        value: createTypedArray('float32', arrLen)
-      };
-      this.addEffect = addEffect;
     }
 
+    this.effectsSequence = [getValueAtCurrentTime.bind(this)];
+    this.data = data;
+    this.keyframes = data.k;
+    this.keyframesMetadata = [];
+    this.offsetTime = elem.data.st;
+    this.k = true;
+    this.kf = true;
+    this._isFirstFrame = true;
+    this.mult = mult || 1;
+    this.elem = elem;
+    this.container = container;
+    this.comp = elem.comp;
+    this.getValue = processEffectsSequence;
+    this.setVValue = setVValue;
+    this.interpolateValue = interpolateValue;
+    this.frameId = -1;
+    var arrLen = data.k[0].s.length;
+    this.v = createTypedArray('float32', arrLen);
+    this.pv = createTypedArray('float32', arrLen);
+
+    for (i = 0; i < arrLen; i += 1) {
+      this.v[i] = initFrame;
+      this.pv[i] = initFrame;
+    }
+
+    this._caching = {
+      lastFrame: initFrame,
+      lastIndex: 0,
+      value: createTypedArray('float32', arrLen)
+    };
+    this.addEffect = addEffect;
+  }
+
+  var PropertyFactory = function () {
     function getProp(elem, data, type, mult, container) {
+      if (data.sid) {
+        data = elem.globalData.slotManager.getProp(data);
+      }
+
       var p;
 
       if (!data.k.length) {
@@ -4885,6 +4914,11 @@
       return this;
     }
 
+    function multiply(matrix) {
+      var matrixProps = matrix.props;
+      return this.transform(matrixProps[0], matrixProps[1], matrixProps[2], matrixProps[3], matrixProps[4], matrixProps[5], matrixProps[6], matrixProps[7], matrixProps[8], matrixProps[9], matrixProps[10], matrixProps[11], matrixProps[12], matrixProps[13], matrixProps[14], matrixProps[15]);
+    }
+
     function isIdentity() {
       if (!this._identityCalculated) {
         this._identity = !(this.props[0] !== 1 || this.props[1] !== 0 || this.props[2] !== 0 || this.props[3] !== 0 || this.props[4] !== 0 || this.props[5] !== 1 || this.props[6] !== 0 || this.props[7] !== 0 || this.props[8] !== 0 || this.props[9] !== 0 || this.props[10] !== 1 || this.props[11] !== 0 || this.props[12] !== 0 || this.props[13] !== 0 || this.props[14] !== 0 || this.props[15] !== 1);
@@ -5100,6 +5134,7 @@
       this.setTransform = setTransform;
       this.translate = translate;
       this.transform = transform;
+      this.multiply = multiply;
       this.applyToPoint = applyToPoint;
       this.applyToX = applyToX;
       this.applyToY = applyToY;
@@ -5238,7 +5273,7 @@
   lottie.useWebWorker = setWebWorker;
   lottie.setIDPrefix = setPrefix;
   lottie.__getFactory = getFactory;
-  lottie.version = '5.10.2';
+  lottie.version = '5.12.2';
 
   function checkReady() {
     if (document.readyState === 'complete') {
@@ -5967,7 +6002,10 @@
     }
 
     function precalculateMatrix() {
-      if (!this.a.k) {
+      this.appliedTransformations = 0;
+      this.pre.reset();
+
+      if (!this.a.effectsSequence.length) {
         this.pre.translate(-this.a.v[0], -this.a.v[1], this.a.v[2]);
         this.appliedTransformations = 1;
       } else {
@@ -7185,8 +7223,15 @@
     var combinedCharacters = []; // Hindi characters
 
     combinedCharacters = combinedCharacters.concat([2304, 2305, 2306, 2307, 2362, 2363, 2364, 2364, 2366, 2367, 2368, 2369, 2370, 2371, 2372, 2373, 2374, 2375, 2376, 2377, 2378, 2379, 2380, 2381, 2382, 2383, 2387, 2388, 2389, 2390, 2391, 2402, 2403]);
+    var BLACK_FLAG_CODE_POINT = 127988;
+    var CANCEL_TAG_CODE_POINT = 917631;
+    var A_TAG_CODE_POINT = 917601;
+    var Z_TAG_CODE_POINT = 917626;
+    var VARIATION_SELECTOR_16_CODE_POINT = 65039;
+    var ZERO_WIDTH_JOINER_CODE_POINT = 8205;
+    var REGIONAL_CHARACTER_A_CODE_POINT = 127462;
+    var REGIONAL_CHARACTER_Z_CODE_POINT = 127487;
     var surrogateModifiers = ['d83cdffb', 'd83cdffc', 'd83cdffd', 'd83cdffe', 'd83cdfff'];
-    var zeroWidthJoiner = [65039, 8205];
 
     function trimFontOptions(font) {
       var familyArray = font.split(',');
@@ -7483,23 +7528,24 @@
     }
 
     function measureText(_char2, fontName, size) {
-      var fontData = this.getFontByName(fontName);
+      var fontData = this.getFontByName(fontName); // Using the char instead of char.charCodeAt(0)
+      // to avoid collisions between equal chars
 
-      var index = _char2.charCodeAt(0);
+      var index = _char2;
 
-      if (!fontData.cache[index + 1]) {
+      if (!fontData.cache[index]) {
         var tHelper = fontData.helper;
 
         if (_char2 === ' ') {
           var doubleSize = tHelper.measureText('|' + _char2 + '|');
           var singleSize = tHelper.measureText('||');
-          fontData.cache[index + 1] = (doubleSize - singleSize) / 100;
+          fontData.cache[index] = (doubleSize - singleSize) / 100;
         } else {
-          fontData.cache[index + 1] = tHelper.measureText(_char2) / 100;
+          fontData.cache[index] = tHelper.measureText(_char2) / 100;
         }
       }
 
-      return fontData.cache[index + 1] * size;
+      return fontData.cache[index] * size;
     }
 
     function getFontByName(name) {
@@ -7517,21 +7563,86 @@
       return this.fonts[0];
     }
 
+    function getCodePoint(string) {
+      var codePoint = 0;
+      var first = string.charCodeAt(0);
+
+      if (first >= 0xD800 && first <= 0xDBFF) {
+        var second = string.charCodeAt(1);
+
+        if (second >= 0xDC00 && second <= 0xDFFF) {
+          codePoint = (first - 0xD800) * 0x400 + second - 0xDC00 + 0x10000;
+        }
+      }
+
+      return codePoint;
+    } // Skin tone modifiers
+
+
     function isModifier(firstCharCode, secondCharCode) {
       var sum = firstCharCode.toString(16) + secondCharCode.toString(16);
       return surrogateModifiers.indexOf(sum) !== -1;
     }
 
-    function isZeroWidthJoiner(firstCharCode, secondCharCode) {
-      if (!secondCharCode) {
-        return firstCharCode === zeroWidthJoiner[1];
+    function isZeroWidthJoiner(charCode) {
+      return charCode === ZERO_WIDTH_JOINER_CODE_POINT;
+    } // This codepoint may change the appearance of the preceding character.
+    // If that is a symbol, dingbat or emoji, U+FE0F forces it to be rendered
+    // as a colorful image as compared to a monochrome text variant.
+
+
+    function isVariationSelector(charCode) {
+      return charCode === VARIATION_SELECTOR_16_CODE_POINT;
+    } // The regional indicator symbols are a set of 26 alphabetic Unicode
+    /// characters (A–Z) intended to be used to encode ISO 3166-1 alpha-2
+    // two-letter country codes in a way that allows optional special treatment.
+
+
+    function isRegionalCode(string) {
+      var codePoint = getCodePoint(string);
+
+      if (codePoint >= REGIONAL_CHARACTER_A_CODE_POINT && codePoint <= REGIONAL_CHARACTER_Z_CODE_POINT) {
+        return true;
       }
 
-      return firstCharCode === zeroWidthJoiner[0] && secondCharCode === zeroWidthJoiner[1];
+      return false;
+    } // Some Emoji implementations represent combinations of
+    // two “regional indicator” letters as a single flag symbol.
+
+
+    function isFlagEmoji(string) {
+      return isRegionalCode(string.substr(0, 2)) && isRegionalCode(string.substr(2, 2));
     }
 
     function isCombinedCharacter(_char3) {
       return combinedCharacters.indexOf(_char3) !== -1;
+    } // Regional flags start with a BLACK_FLAG_CODE_POINT
+    // folowed by 5 chars in the TAG range
+    // and end with a CANCEL_TAG_CODE_POINT
+
+
+    function isRegionalFlag(text, index) {
+      var codePoint = getCodePoint(text.substr(index, 2));
+
+      if (codePoint !== BLACK_FLAG_CODE_POINT) {
+        return false;
+      }
+
+      var count = 0;
+      index += 2;
+
+      while (count < 5) {
+        codePoint = getCodePoint(text.substr(index, 2));
+
+        if (codePoint < A_TAG_CODE_POINT || codePoint > Z_TAG_CODE_POINT) {
+          return false;
+        }
+
+        count += 1;
+        index += 2;
+      }
+
+      return getCodePoint(text.substr(index, 2)) === CANCEL_TAG_CODE_POINT;
     }
 
     function setIsLoaded() {
@@ -7551,7 +7662,12 @@
 
     Font.isModifier = isModifier;
     Font.isZeroWidthJoiner = isZeroWidthJoiner;
+    Font.isFlagEmoji = isFlagEmoji;
+    Font.isRegionalCode = isRegionalCode;
     Font.isCombinedCharacter = isCombinedCharacter;
+    Font.isRegionalFlag = isRegionalFlag;
+    Font.isVariationSelector = isVariationSelector;
+    Font.BLACK_FLAG_CODE_POINT = BLACK_FLAG_CODE_POINT;
     var fontPrototype = {
       addChars: addChars,
       addFonts: addFonts,
@@ -7564,6 +7680,22 @@
     Font.prototype = fontPrototype;
     return Font;
   }();
+
+  function SlotManager(animationData) {
+    this.animationData = animationData;
+  }
+
+  SlotManager.prototype.getProp = function (data) {
+    if (this.animationData.slots && this.animationData.slots[data.sid]) {
+      return Object.assign(data, this.animationData.slots[data.sid].p);
+    }
+
+    return data;
+  };
+
+  function slotFactory(animationData) {
+    return new SlotManager(animationData);
+  }
 
   function RenderableElement() {}
 
@@ -8249,6 +8381,7 @@
 
   BaseRenderer.prototype.setupGlobalData = function (animData, fontsContainer) {
     this.globalData.fontManager = new FontManager();
+    this.globalData.slotManager = slotFactory(animData);
     this.globalData.fontManager.addChars(animData.chars);
     this.globalData.fontManager.addFonts(animData.fonts, fontsContainer);
     this.globalData.getAssetData = this.animationItem.getAssetData.bind(this.animationItem);
@@ -8264,17 +8397,25 @@
     };
   };
 
+  var effectTypes = {
+    TRANSFORM_EFFECT: 'transformEFfect'
+  };
+
   function TransformElement() {}
 
   TransformElement.prototype = {
     initTransform: function initTransform() {
+      var mat = new Matrix();
       this.finalTransform = {
         mProp: this.data.ks ? TransformPropertyFactory.getTransformProperty(this, this.data.ks, this) : {
           o: 0
         },
         _matMdf: false,
+        _localMatMdf: false,
         _opMdf: false,
-        mat: new Matrix()
+        mat: mat,
+        localMat: mat,
+        localOpacity: 1
       };
 
       if (this.data.ao) {
@@ -8311,8 +8452,75 @@
           finalMat.cloneFromProps(mat);
 
           for (i = 0; i < len; i += 1) {
-            mat = this.hierarchy[i].finalTransform.mProp.v.props;
-            finalMat.transform(mat[0], mat[1], mat[2], mat[3], mat[4], mat[5], mat[6], mat[7], mat[8], mat[9], mat[10], mat[11], mat[12], mat[13], mat[14], mat[15]);
+            finalMat.multiply(this.hierarchy[i].finalTransform.mProp.v);
+          }
+        }
+      }
+
+      if (this.finalTransform._matMdf) {
+        this.finalTransform._localMatMdf = this.finalTransform._matMdf;
+      }
+
+      if (this.finalTransform._opMdf) {
+        this.finalTransform.localOpacity = this.finalTransform.mProp.o.v;
+      }
+    },
+    renderLocalTransform: function renderLocalTransform() {
+      if (this.localTransforms) {
+        var i = 0;
+        var len = this.localTransforms.length;
+        this.finalTransform._localMatMdf = this.finalTransform._matMdf;
+
+        if (!this.finalTransform._localMatMdf || !this.finalTransform._opMdf) {
+          while (i < len) {
+            if (this.localTransforms[i]._mdf) {
+              this.finalTransform._localMatMdf = true;
+            }
+
+            if (this.localTransforms[i]._opMdf && !this.finalTransform._opMdf) {
+              this.finalTransform.localOpacity = this.finalTransform.mProp.o.v;
+              this.finalTransform._opMdf = true;
+            }
+
+            i += 1;
+          }
+        }
+
+        if (this.finalTransform._localMatMdf) {
+          var localMat = this.finalTransform.localMat;
+          this.localTransforms[0].matrix.clone(localMat);
+
+          for (i = 1; i < len; i += 1) {
+            var lmat = this.localTransforms[i].matrix;
+            localMat.multiply(lmat);
+          }
+
+          localMat.multiply(this.finalTransform.mat);
+        }
+
+        if (this.finalTransform._opMdf) {
+          var localOp = this.finalTransform.localOpacity;
+
+          for (i = 0; i < len; i += 1) {
+            localOp *= this.localTransforms[i].opacity * 0.01;
+          }
+
+          this.finalTransform.localOpacity = localOp;
+        }
+      }
+    },
+    searchEffectTransforms: function searchEffectTransforms() {
+      if (this.renderableEffectsManager) {
+        var transformEffects = this.renderableEffectsManager.getEffects(effectTypes.TRANSFORM_EFFECT);
+
+        if (transformEffects.length) {
+          this.localTransforms = [];
+          this.finalTransform.localMat = new Matrix();
+          var i = 0;
+          var len = transformEffects.length;
+
+          for (i = 0; i < len; i += 1) {
+            this.localTransforms.push(transformEffects[i]);
           }
         }
       }
@@ -8644,7 +8852,7 @@
     return ob;
   }();
 
-  var registeredEffects = {};
+  var registeredEffects$1 = {};
   var idPrefix = 'filter_result_';
 
   function SVGEffects(elem) {
@@ -8661,12 +8869,12 @@
       filterManager = null;
       var type = elem.data.ef[i].ty;
 
-      if (registeredEffects[type]) {
-        var Effect = registeredEffects[type].effect;
+      if (registeredEffects$1[type]) {
+        var Effect = registeredEffects$1[type].effect;
         filterManager = new Effect(fil, elem.effectsManager.effectElements[i], elem, idPrefix + count, source);
         source = idPrefix + count;
 
-        if (registeredEffects[type].countsAsEffect) {
+        if (registeredEffects$1[type].countsAsEffect) {
           count += 1;
         }
       }
@@ -8695,8 +8903,22 @@
     }
   };
 
-  function registerEffect(id, effect, countsAsEffect) {
-    registeredEffects[id] = {
+  SVGEffects.prototype.getEffects = function (type) {
+    var i;
+    var len = this.filters.length;
+    var effects = [];
+
+    for (i = 0; i < len; i += 1) {
+      if (this.filters[i].type === type) {
+        effects.push(this.filters[i]);
+      }
+    }
+
+    return effects;
+  };
+
+  function registerEffect$1(id, effect, countsAsEffect) {
+    registeredEffects$1[id] = {
       effect: effect,
       countsAsEffect: countsAsEffect
     };
@@ -8769,12 +8991,12 @@
       }
     },
     renderElement: function renderElement() {
-      if (this.finalTransform._matMdf) {
-        this.transformedElement.setAttribute('transform', this.finalTransform.mat.to2dCSS());
+      if (this.finalTransform._localMatMdf) {
+        this.transformedElement.setAttribute('transform', this.finalTransform.localMat.to2dCSS());
       }
 
       if (this.finalTransform._opMdf) {
-        this.transformedElement.setAttribute('opacity', this.finalTransform.mProp.o.v);
+        this.transformedElement.setAttribute('opacity', this.finalTransform.localOpacity);
       }
     },
     destroyBaseElement: function destroyBaseElement() {
@@ -8792,6 +9014,7 @@
     createRenderableComponents: function createRenderableComponents() {
       this.maskManager = new MaskElement(this.data, this, this.globalData);
       this.renderableEffectsManager = new SVGEffects(this);
+      this.searchEffectTransforms();
     },
     getMatte: function getMatte(matteType) {
       // This should not be a common case. But for backward compatibility, we'll create the matte object.
@@ -8983,6 +9206,7 @@
 
         this.renderTransform();
         this.renderRenderable();
+        this.renderLocalTransform();
         this.renderElement();
         this.renderInnerContent();
 
@@ -9007,6 +9231,11 @@
 
   function IImageElement(data, globalData, comp) {
     this.assetData = globalData.getAssetData(data.refId);
+
+    if (this.assetData && this.assetData.sid) {
+      this.assetData = globalData.slotManager.getProp(this.assetData);
+    }
+
     this.initElement(data, globalData, comp);
     this.sourceRect = {
       top: 0,
@@ -9574,7 +9803,6 @@
       var lvl = itemData.lvl;
       var paths;
       var mat;
-      var props;
       var iterations;
       var k;
 
@@ -9597,8 +9825,7 @@
             k = itemData.transformers.length - 1;
 
             while (iterations > 0) {
-              props = itemData.transformers[k].mProps.v.props;
-              mat.transform(props[0], props[1], props[2], props[3], props[4], props[5], props[6], props[7], props[8], props[9], props[10], props[11], props[12], props[13], props[14], props[15]);
+              mat.multiply(itemData.transformers[k].mProps.v);
               iterations -= 1;
               k -= 1;
             }
@@ -10242,6 +10469,11 @@
     this.kf = false;
     this._isFirstFrame = true;
     this._mdf = false;
+
+    if (data.d && data.d.sid) {
+      data.d = elem.globalData.slotManager.getProp(data.d);
+    }
+
     this.data = data;
     this.elem = elem;
     this.comp = this.elem.comp;
@@ -10394,45 +10626,53 @@
     var charCode;
     var secondCharCode;
     var shouldCombine = false;
+    var shouldCombineNext = false;
+    var currentChars = '';
 
     while (i < len) {
+      shouldCombine = shouldCombineNext;
+      shouldCombineNext = false;
       charCode = text.charCodeAt(i);
+      currentChars = text.charAt(i);
 
       if (FontManager.isCombinedCharacter(charCode)) {
-        charactersArray[charactersArray.length - 1] += text.charAt(i);
+        shouldCombine = true; // It's a potential surrogate pair (this is the High surrogate)
       } else if (charCode >= 0xD800 && charCode <= 0xDBFF) {
-        secondCharCode = text.charCodeAt(i + 1);
-
-        if (secondCharCode >= 0xDC00 && secondCharCode <= 0xDFFF) {
-          if (shouldCombine || FontManager.isModifier(charCode, secondCharCode)) {
-            charactersArray[charactersArray.length - 1] += text.substr(i, 2);
-            shouldCombine = false;
-          } else {
-            charactersArray.push(text.substr(i, 2));
-          }
-
-          i += 1;
+        if (FontManager.isRegionalFlag(text, i)) {
+          currentChars = text.substr(i, 14);
         } else {
-          charactersArray.push(text.charAt(i));
+          secondCharCode = text.charCodeAt(i + 1); // It's a surrogate pair (this is the Low surrogate)
+
+          if (secondCharCode >= 0xDC00 && secondCharCode <= 0xDFFF) {
+            if (FontManager.isModifier(charCode, secondCharCode)) {
+              currentChars = text.substr(i, 2);
+              shouldCombine = true;
+            } else if (FontManager.isFlagEmoji(text.substr(i, 4))) {
+              currentChars = text.substr(i, 4);
+            } else {
+              currentChars = text.substr(i, 2);
+            }
+          }
         }
       } else if (charCode > 0xDBFF) {
         secondCharCode = text.charCodeAt(i + 1);
 
-        if (FontManager.isZeroWidthJoiner(charCode, secondCharCode)) {
+        if (FontManager.isVariationSelector(charCode)) {
           shouldCombine = true;
-          charactersArray[charactersArray.length - 1] += text.substr(i, 2);
-          i += 1;
-        } else {
-          charactersArray.push(text.charAt(i));
         }
       } else if (FontManager.isZeroWidthJoiner(charCode)) {
-        charactersArray[charactersArray.length - 1] += text.charAt(i);
         shouldCombine = true;
-      } else {
-        charactersArray.push(text.charAt(i));
+        shouldCombineNext = true;
       }
 
-      i += 1;
+      if (shouldCombine) {
+        charactersArray[charactersArray.length - 1] += currentChars;
+        shouldCombine = false;
+      } else {
+        charactersArray.push(currentChars);
+      }
+
+      i += currentChars.length;
     }
 
     return charactersArray;
@@ -10726,6 +10966,7 @@
     dData = this.copyData(dData, newData);
     this.data.d.k[index].s = dData;
     this.recalculate(index);
+    this.setCurrentData(dData);
     this.elem.addDynamicProperty(this);
   };
 
@@ -11670,12 +11911,6 @@
     this._mdf = false;
     this.prepareRenderableFrame(num);
     this.prepareProperties(num, this.isInRange);
-
-    if (this.textProperty._mdf || this.textProperty._isFirstFrame) {
-      this.buildNewText();
-      this.textProperty._isFirstFrame = false;
-      this.textProperty._mdf = false;
-    }
   };
 
   ITextElement.prototype.createPathShape = function (matrixHelper, shapes) {
@@ -11736,6 +11971,14 @@
   ITextElement.prototype.emptyProp = new LetterProps();
 
   ITextElement.prototype.destroy = function () {};
+
+  ITextElement.prototype.validateText = function () {
+    if (this.textProperty._mdf || this.textProperty._isFirstFrame) {
+      this.buildNewText();
+      this.textProperty._isFirstFrame = false;
+      this.textProperty._mdf = false;
+    }
+  };
 
   var emptyShapeData = {
     shapes: []
@@ -12030,6 +12273,8 @@
   };
 
   SVGTextLottieElement.prototype.renderInnerContent = function () {
+    this.validateText();
+
     if (!this.data.singleShape || this._mdf) {
       this.textAnimator.getMeasures(this.textProperty.currentData, this.lettersChangedFlag);
 
@@ -12220,7 +12465,7 @@
     var len = this.layers ? this.layers.length : 0;
 
     for (i = 0; i < len; i += 1) {
-      if (this.elements[i]) {
+      if (this.elements[i] && this.elements[i].destroy) {
         this.elements[i].destroy();
       }
     }
@@ -12579,100 +12824,6 @@
     return new SVGCompElement(data, this.globalData, this);
   };
 
-  function CVContextData() {
-    this.saved = [];
-    this.cArrPos = 0;
-    this.cTr = new Matrix();
-    this.cO = 1;
-    var i;
-    var len = 15;
-    this.savedOp = createTypedArray('float32', len);
-
-    for (i = 0; i < len; i += 1) {
-      this.saved[i] = createTypedArray('float32', 16);
-    }
-
-    this._length = len;
-  }
-
-  CVContextData.prototype.duplicate = function () {
-    var newLength = this._length * 2;
-    var currentSavedOp = this.savedOp;
-    this.savedOp = createTypedArray('float32', newLength);
-    this.savedOp.set(currentSavedOp);
-    var i = 0;
-
-    for (i = this._length; i < newLength; i += 1) {
-      this.saved[i] = createTypedArray('float32', 16);
-    }
-
-    this._length = newLength;
-  };
-
-  CVContextData.prototype.reset = function () {
-    this.cArrPos = 0;
-    this.cTr.reset();
-    this.cO = 1;
-  };
-
-  CVContextData.prototype.popTransform = function () {
-    var popped = this.saved[this.cArrPos];
-    var i;
-    var arr = this.cTr.props;
-
-    for (i = 0; i < 16; i += 1) {
-      arr[i] = popped[i];
-    }
-
-    return popped;
-  };
-
-  CVContextData.prototype.popOpacity = function () {
-    var popped = this.savedOp[this.cArrPos];
-    this.cO = popped;
-    return popped;
-  };
-
-  CVContextData.prototype.pop = function () {
-    this.cArrPos -= 1;
-    var transform = this.popTransform();
-    var opacity = this.popOpacity();
-    return {
-      transform: transform,
-      opacity: opacity
-    };
-  };
-
-  CVContextData.prototype.push = function () {
-    var props = this.cTr.props;
-
-    if (this._length <= this.cArrPos) {
-      this.duplicate();
-    }
-
-    var i;
-    var arr = this.saved[this.cArrPos];
-
-    for (i = 0; i < 16; i += 1) {
-      arr[i] = props[i];
-    }
-
-    this.savedOp[this.cArrPos] = this.cO;
-    this.cArrPos += 1;
-  };
-
-  CVContextData.prototype.getTransform = function () {
-    return this.cTr;
-  };
-
-  CVContextData.prototype.getOpacity = function () {
-    return this.cO;
-  };
-
-  CVContextData.prototype.setOpacity = function (value) {
-    this.cO = value;
-  };
-
   function ShapeTransformManager() {
     this.sequences = {};
     this.sequenceList = [];
@@ -12718,12 +12869,10 @@
       }
 
       if (_mdf) {
-        var props;
         sequence.finalTransform.reset();
 
         for (i = len - 1; i >= 0; i -= 1) {
-          props = sequence.transforms[i].transform.mProps.v.props;
-          sequence.finalTransform.transform(props[0], props[1], props[2], props[3], props[4], props[5], props[6], props[7], props[8], props[9], props[10], props[11], props[12], props[13], props[14], props[15]);
+          sequence.finalTransform.multiply(sequence.transforms[i].transform.mProps.v);
         }
       }
 
@@ -12841,9 +12990,61 @@
     };
   }();
 
-  function CVEffects() {}
+  var registeredEffects = {};
 
-  CVEffects.prototype.renderFrame = function () {};
+  function CVEffects(elem) {
+    var i;
+    var len = elem.data.ef ? elem.data.ef.length : 0;
+    this.filters = [];
+    var filterManager;
+
+    for (i = 0; i < len; i += 1) {
+      filterManager = null;
+      var type = elem.data.ef[i].ty;
+
+      if (registeredEffects[type]) {
+        var Effect = registeredEffects[type].effect;
+        filterManager = new Effect(elem.effectsManager.effectElements[i], elem);
+      }
+
+      if (filterManager) {
+        this.filters.push(filterManager);
+      }
+    }
+
+    if (this.filters.length) {
+      elem.addRenderableComponent(this);
+    }
+  }
+
+  CVEffects.prototype.renderFrame = function (_isFirstFrame) {
+    var i;
+    var len = this.filters.length;
+
+    for (i = 0; i < len; i += 1) {
+      this.filters[i].renderFrame(_isFirstFrame);
+    }
+  };
+
+  CVEffects.prototype.getEffects = function (type) {
+    var i;
+    var len = this.filters.length;
+    var effects = [];
+
+    for (i = 0; i < len; i += 1) {
+      if (this.filters[i].type === type) {
+        effects.push(this.filters[i]);
+      }
+    }
+
+    return effects;
+  };
+
+  function registerEffect(id, effect) {
+    registeredEffects[id] = {
+      effect: effect
+    };
+  }
 
   function CVMaskElement(data, element) {
     this.data = data;
@@ -12952,6 +13153,7 @@
       this.canvasContext = this.globalData.canvasContext;
       this.transformCanvas = this.globalData.transformCanvas;
       this.renderableEffectsManager = new CVEffects(this);
+      this.searchEffectTransforms();
     },
     createContent: function createContent() {},
     setBlendMode: function setBlendMode() {
@@ -12965,6 +13167,7 @@
     },
     createRenderableComponents: function createRenderableComponents() {
       this.maskManager = new CVMaskElement(this.data, this);
+      this.transformEffects = this.renderableEffectsManager.getEffects(effectTypes.TRANSFORM_EFFECT);
     },
     hideElement: function hideElement() {
       if (!this.hidden && (!this.isInRange || this.isTransparent)) {
@@ -13049,12 +13252,13 @@
 
       this.renderTransform();
       this.renderRenderable();
+      this.renderLocalTransform();
       this.setBlendMode();
       var forceRealStack = this.data.ty === 0;
       this.prepareLayer();
       this.globalData.renderer.save(forceRealStack);
-      this.globalData.renderer.ctxTransform(this.finalTransform.mat.props);
-      this.globalData.renderer.ctxOpacity(this.finalTransform.mProp.o.v);
+      this.globalData.renderer.ctxTransform(this.finalTransform.localMat.props);
+      this.globalData.renderer.ctxOpacity(this.finalTransform.localOpacity);
       this.renderInnerContent();
       this.globalData.renderer.restore(forceRealStack);
       this.exitLayer();
@@ -13412,13 +13616,17 @@
         elems = currentStyle.elements;
 
         if (type === 'st' || type === 'gs') {
-          ctx.strokeStyle = type === 'st' ? currentStyle.co : currentStyle.grd;
-          ctx.lineWidth = currentStyle.wi;
-          ctx.lineCap = currentStyle.lc;
-          ctx.lineJoin = currentStyle.lj;
-          ctx.miterLimit = currentStyle.ml || 0;
+          renderer.ctxStrokeStyle(type === 'st' ? currentStyle.co : currentStyle.grd); // ctx.strokeStyle = type === 'st' ? currentStyle.co : currentStyle.grd;
+
+          renderer.ctxLineWidth(currentStyle.wi); // ctx.lineWidth = currentStyle.wi;
+
+          renderer.ctxLineCap(currentStyle.lc); // ctx.lineCap = currentStyle.lc;
+
+          renderer.ctxLineJoin(currentStyle.lj); // ctx.lineJoin = currentStyle.lj;
+
+          renderer.ctxMiterLimit(currentStyle.ml || 0); // ctx.miterLimit = currentStyle.ml || 0;
         } else {
-          ctx.fillStyle = type === 'fl' ? currentStyle.co : currentStyle.grd;
+          renderer.ctxFillStyle(type === 'fl' ? currentStyle.co : currentStyle.grd); // ctx.fillStyle = type === 'fl' ? currentStyle.co : currentStyle.grd;
         }
 
         renderer.ctxOpacity(currentStyle.coOp);
@@ -13454,7 +13662,8 @@
           }
 
           if (type === 'st' || type === 'gs') {
-            ctx.stroke();
+            // ctx.stroke();
+            renderer.ctxStroke();
 
             if (currentStyle.da) {
               ctx.setLineDash(this.dashResetter);
@@ -13463,7 +13672,8 @@
         }
 
         if (type !== 'st' && type !== 'gs') {
-          ctx.fill(currentStyle.r);
+          // ctx.fill(currentStyle.r);
+          this.globalData.renderer.ctxFill(currentStyle.r);
         }
 
         renderer.restore();
@@ -13785,11 +13995,14 @@
   };
 
   CVTextElement.prototype.renderInnerContent = function () {
+    this.validateText();
     var ctx = this.canvasContext;
     ctx.font = this.values.fValue;
-    ctx.lineCap = 'butt';
-    ctx.lineJoin = 'miter';
-    ctx.miterLimit = 4;
+    this.globalData.renderer.ctxLineCap('butt'); // ctx.lineCap = 'butt';
+
+    this.globalData.renderer.ctxLineJoin('miter'); // ctx.lineJoin = 'miter';
+
+    this.globalData.renderer.ctxMiterLimit(4); // ctx.miterLimit = 4;
 
     if (!this.data.singleShape) {
       this.textAnimator.getMeasures(this.textProperty.currentData, this.lettersChangedFlag);
@@ -13810,26 +14023,27 @@
     var lastStrokeW = null;
     var commands;
     var pathArr;
+    var renderer = this.globalData.renderer;
 
     for (i = 0; i < len; i += 1) {
       if (!letters[i].n) {
         renderedLetter = renderedLetters[i];
 
         if (renderedLetter) {
-          this.globalData.renderer.save();
-          this.globalData.renderer.ctxTransform(renderedLetter.p);
-          this.globalData.renderer.ctxOpacity(renderedLetter.o);
+          renderer.save();
+          renderer.ctxTransform(renderedLetter.p);
+          renderer.ctxOpacity(renderedLetter.o);
         }
 
         if (this.fill) {
           if (renderedLetter && renderedLetter.fc) {
             if (lastFill !== renderedLetter.fc) {
-              lastFill = renderedLetter.fc;
-              ctx.fillStyle = renderedLetter.fc;
+              renderer.ctxFillStyle(renderedLetter.fc);
+              lastFill = renderedLetter.fc; // ctx.fillStyle = renderedLetter.fc;
             }
           } else if (lastFill !== this.values.fill) {
             lastFill = this.values.fill;
-            ctx.fillStyle = this.values.fill;
+            renderer.ctxFillStyle(this.values.fill); // ctx.fillStyle = this.values.fill;
           }
 
           commands = this.textSpans[i].elem;
@@ -13847,28 +14061,29 @@
           }
 
           this.globalData.canvasContext.closePath();
-          this.globalData.canvasContext.fill(); /// ctx.fillText(this.textSpans[i].val,0,0);
+          renderer.ctxFill(); // this.globalData.canvasContext.fill();
+          /// ctx.fillText(this.textSpans[i].val,0,0);
         }
 
         if (this.stroke) {
           if (renderedLetter && renderedLetter.sw) {
             if (lastStrokeW !== renderedLetter.sw) {
               lastStrokeW = renderedLetter.sw;
-              ctx.lineWidth = renderedLetter.sw;
+              renderer.ctxLineWidth(renderedLetter.sw); // ctx.lineWidth = renderedLetter.sw;
             }
           } else if (lastStrokeW !== this.values.sWidth) {
             lastStrokeW = this.values.sWidth;
-            ctx.lineWidth = this.values.sWidth;
+            renderer.ctxLineWidth(this.values.sWidth); // ctx.lineWidth = this.values.sWidth;
           }
 
           if (renderedLetter && renderedLetter.sc) {
             if (lastStroke !== renderedLetter.sc) {
               lastStroke = renderedLetter.sc;
-              ctx.strokeStyle = renderedLetter.sc;
+              renderer.ctxStrokeStyle(renderedLetter.sc); // ctx.strokeStyle = renderedLetter.sc;
             }
           } else if (lastStroke !== this.values.stroke) {
             lastStroke = this.values.stroke;
-            ctx.strokeStyle = this.values.stroke;
+            renderer.ctxStrokeStyle(this.values.stroke); // ctx.strokeStyle = this.values.stroke;
           }
 
           commands = this.textSpans[i].elem;
@@ -13886,7 +14101,8 @@
           }
 
           this.globalData.canvasContext.closePath();
-          this.globalData.canvasContext.stroke(); /// ctx.strokeText(letters[i].val,0,0);
+          renderer.ctxStroke(); // this.globalData.canvasContext.stroke();
+          /// ctx.strokeText(letters[i].val,0,0);
         }
 
         if (renderedLetter) {
@@ -13950,43 +14166,14 @@
   CVSolidElement.prototype.prepareFrame = IImageElement.prototype.prepareFrame;
 
   CVSolidElement.prototype.renderInnerContent = function () {
-    var ctx = this.canvasContext;
-    ctx.fillStyle = this.data.sc;
-    ctx.fillRect(0, 0, this.data.sw, this.data.sh); //
+    // var ctx = this.canvasContext;
+    this.globalData.renderer.ctxFillStyle(this.data.sc); // ctx.fillStyle = this.data.sc;
+
+    this.globalData.renderer.ctxFillRect(0, 0, this.data.sw, this.data.sh); // ctx.fillRect(0, 0, this.data.sw, this.data.sh);
+    //
   };
 
-  function CanvasRendererBase(animationItem, config) {
-    this.animationItem = animationItem;
-    this.renderConfig = {
-      clearCanvas: config && config.clearCanvas !== undefined ? config.clearCanvas : true,
-      context: config && config.context || null,
-      progressiveLoad: config && config.progressiveLoad || false,
-      preserveAspectRatio: config && config.preserveAspectRatio || 'xMidYMid meet',
-      imagePreserveAspectRatio: config && config.imagePreserveAspectRatio || 'xMidYMid slice',
-      contentVisibility: config && config.contentVisibility || 'visible',
-      className: config && config.className || '',
-      id: config && config.id || ''
-    };
-    this.renderConfig.dpr = config && config.dpr || 1;
-
-    if (this.animationItem.wrapper) {
-      this.renderConfig.dpr = config && config.dpr || window.devicePixelRatio || 1;
-    }
-
-    this.renderedFrame = -1;
-    this.globalData = {
-      frameNum: -1,
-      _mdf: false,
-      renderConfig: this.renderConfig,
-      currentGlobalAlpha: -1
-    };
-    this.contextData = new CVContextData();
-    this.elements = [];
-    this.pendingElements = [];
-    this.transformMat = new Matrix();
-    this.completeLayers = false;
-    this.rendererType = 'canvas';
-  }
+  function CanvasRendererBase() {}
 
   extendPrototype([BaseRenderer], CanvasRendererBase);
 
@@ -14013,44 +14200,47 @@
       return;
     }
 
-    if (!this.renderConfig.clearCanvas) {
-      this.canvasContext.transform(props[0], props[1], props[4], props[5], props[12], props[13]);
-      return;
-    } // Resetting the canvas transform matrix to the new transform
-
-
-    this.transformMat.cloneFromProps(props); // Taking the last transform value from the stored stack of transforms
-
-    var currentTransform = this.contextData.getTransform();
-    var cProps = currentTransform.props; // Applying the last transform value after the new transform to respect the order of transformations
-
-    this.transformMat.transform(cProps[0], cProps[1], cProps[2], cProps[3], cProps[4], cProps[5], cProps[6], cProps[7], cProps[8], cProps[9], cProps[10], cProps[11], cProps[12], cProps[13], cProps[14], cProps[15]); // Storing the new transformed value in the stored transform
-
-    currentTransform.cloneFromProps(this.transformMat.props);
-    var trProps = currentTransform.props; // Applying the new transform to the canvas
-
-    this.canvasContext.setTransform(trProps[0], trProps[1], trProps[4], trProps[5], trProps[12], trProps[13]);
+    this.canvasContext.transform(props[0], props[1], props[4], props[5], props[12], props[13]);
   };
 
   CanvasRendererBase.prototype.ctxOpacity = function (op) {
-    /* if(op === 1){
-          return;
-      } */
-    var currentOpacity = this.contextData.getOpacity();
+    this.canvasContext.globalAlpha *= op < 0 ? 0 : op;
+  };
 
-    if (!this.renderConfig.clearCanvas) {
-      this.canvasContext.globalAlpha *= op < 0 ? 0 : op;
-      this.globalData.currentGlobalAlpha = currentOpacity;
-      return;
-    }
+  CanvasRendererBase.prototype.ctxFillStyle = function (value) {
+    this.canvasContext.fillStyle = value;
+  };
 
-    currentOpacity *= op < 0 ? 0 : op;
-    this.contextData.setOpacity(currentOpacity);
+  CanvasRendererBase.prototype.ctxStrokeStyle = function (value) {
+    this.canvasContext.strokeStyle = value;
+  };
 
-    if (this.globalData.currentGlobalAlpha !== currentOpacity) {
-      this.canvasContext.globalAlpha = currentOpacity;
-      this.globalData.currentGlobalAlpha = currentOpacity;
-    }
+  CanvasRendererBase.prototype.ctxLineWidth = function (value) {
+    this.canvasContext.lineWidth = value;
+  };
+
+  CanvasRendererBase.prototype.ctxLineCap = function (value) {
+    this.canvasContext.lineCap = value;
+  };
+
+  CanvasRendererBase.prototype.ctxLineJoin = function (value) {
+    this.canvasContext.lineJoin = value;
+  };
+
+  CanvasRendererBase.prototype.ctxMiterLimit = function (value) {
+    this.canvasContext.miterLimit = value;
+  };
+
+  CanvasRendererBase.prototype.ctxFill = function (rule) {
+    this.canvasContext.fill(rule);
+  };
+
+  CanvasRendererBase.prototype.ctxFillRect = function (x, y, w, h) {
+    this.canvasContext.fillRect(x, y, w, h);
+  };
+
+  CanvasRendererBase.prototype.ctxStroke = function () {
+    this.canvasContext.stroke();
   };
 
   CanvasRendererBase.prototype.reset = function () {
@@ -14062,17 +14252,8 @@
     this.contextData.reset();
   };
 
-  CanvasRendererBase.prototype.save = function (actionFlag) {
-    if (!this.renderConfig.clearCanvas) {
-      this.canvasContext.save();
-      return;
-    }
-
-    if (actionFlag) {
-      this.canvasContext.save();
-    }
-
-    this.contextData.push();
+  CanvasRendererBase.prototype.save = function () {
+    this.canvasContext.save();
   };
 
   CanvasRendererBase.prototype.restore = function (actionFlag) {
@@ -14082,19 +14263,10 @@
     }
 
     if (actionFlag) {
-      this.canvasContext.restore();
       this.globalData.blendMode = 'source-over';
     }
 
-    var popped = this.contextData.pop();
-    var transform = popped.transform;
-    var opacity = popped.opacity;
-    this.canvasContext.setTransform(transform[0], transform[1], transform[4], transform[5], transform[12], transform[13]);
-
-    if (this.globalData.currentGlobalAlpha !== opacity) {
-      this.canvasContext.globalAlpha = opacity;
-      this.globalData.currentGlobalAlpha = opacity;
-    }
+    this.contextData.restore(actionFlag);
   };
 
   CanvasRendererBase.prototype.configAnimation = function (animData) {
@@ -14123,6 +14295,7 @@
       this.canvasContext = this.renderConfig.context;
     }
 
+    this.contextData.setContext(this.canvasContext);
     this.data = animData;
     this.layers = animData.layers;
     this.transformCanvas = {
@@ -14238,7 +14411,7 @@
     var len = this.layers ? this.layers.length : 0;
 
     for (i = len - 1; i >= 0; i -= 1) {
-      if (this.elements[i]) {
+      if (this.elements[i] && this.elements[i].destroy) {
         this.elements[i].destroy();
       }
     }
@@ -14268,7 +14441,7 @@
       this.checkLayers(num);
     }
 
-    for (i = 0; i < len; i += 1) {
+    for (i = len - 1; i >= 0; i -= 1) {
       if (this.completeLayers || this.elements[i]) {
         this.elements[i].prepareFrame(num - this.layers[i].st);
       }
@@ -14321,6 +14494,261 @@
 
   CanvasRendererBase.prototype.show = function () {
     this.animationItem.container.style.display = 'block';
+  };
+
+  function CanvasContext() {
+    this.opacity = -1;
+    this.transform = createTypedArray('float32', 16);
+    this.fillStyle = '';
+    this.strokeStyle = '';
+    this.lineWidth = '';
+    this.lineCap = '';
+    this.lineJoin = '';
+    this.miterLimit = '';
+    this.id = Math.random();
+  }
+
+  function CVContextData() {
+    this.stack = [];
+    this.cArrPos = 0;
+    this.cTr = new Matrix();
+    var i;
+    var len = 15;
+
+    for (i = 0; i < len; i += 1) {
+      var canvasContext = new CanvasContext();
+      this.stack[i] = canvasContext;
+    }
+
+    this._length = len;
+    this.nativeContext = null;
+    this.transformMat = new Matrix();
+    this.currentOpacity = 1; //
+
+    this.currentFillStyle = '';
+    this.appliedFillStyle = ''; //
+
+    this.currentStrokeStyle = '';
+    this.appliedStrokeStyle = ''; //
+
+    this.currentLineWidth = '';
+    this.appliedLineWidth = ''; //
+
+    this.currentLineCap = '';
+    this.appliedLineCap = ''; //
+
+    this.currentLineJoin = '';
+    this.appliedLineJoin = ''; //
+
+    this.appliedMiterLimit = '';
+    this.currentMiterLimit = '';
+  }
+
+  CVContextData.prototype.duplicate = function () {
+    var newLength = this._length * 2;
+    var i = 0;
+
+    for (i = this._length; i < newLength; i += 1) {
+      this.stack[i] = new CanvasContext();
+    }
+
+    this._length = newLength;
+  };
+
+  CVContextData.prototype.reset = function () {
+    this.cArrPos = 0;
+    this.cTr.reset();
+    this.stack[this.cArrPos].opacity = 1;
+  };
+
+  CVContextData.prototype.restore = function (forceRestore) {
+    this.cArrPos -= 1;
+    var currentContext = this.stack[this.cArrPos];
+    var transform = currentContext.transform;
+    var i;
+    var arr = this.cTr.props;
+
+    for (i = 0; i < 16; i += 1) {
+      arr[i] = transform[i];
+    }
+
+    if (forceRestore) {
+      this.nativeContext.restore();
+      var prevStack = this.stack[this.cArrPos + 1];
+      this.appliedFillStyle = prevStack.fillStyle;
+      this.appliedStrokeStyle = prevStack.strokeStyle;
+      this.appliedLineWidth = prevStack.lineWidth;
+      this.appliedLineCap = prevStack.lineCap;
+      this.appliedLineJoin = prevStack.lineJoin;
+      this.appliedMiterLimit = prevStack.miterLimit;
+    }
+
+    this.nativeContext.setTransform(transform[0], transform[1], transform[4], transform[5], transform[12], transform[13]);
+
+    if (forceRestore || currentContext.opacity !== -1 && this.currentOpacity !== currentContext.opacity) {
+      this.nativeContext.globalAlpha = currentContext.opacity;
+      this.currentOpacity = currentContext.opacity;
+    }
+
+    this.currentFillStyle = currentContext.fillStyle;
+    this.currentStrokeStyle = currentContext.strokeStyle;
+    this.currentLineWidth = currentContext.lineWidth;
+    this.currentLineCap = currentContext.lineCap;
+    this.currentLineJoin = currentContext.lineJoin;
+    this.currentMiterLimit = currentContext.miterLimit;
+  };
+
+  CVContextData.prototype.save = function (saveOnNativeFlag) {
+    if (saveOnNativeFlag) {
+      this.nativeContext.save();
+    }
+
+    var props = this.cTr.props;
+
+    if (this._length <= this.cArrPos) {
+      this.duplicate();
+    }
+
+    var currentStack = this.stack[this.cArrPos];
+    var i;
+
+    for (i = 0; i < 16; i += 1) {
+      currentStack.transform[i] = props[i];
+    }
+
+    this.cArrPos += 1;
+    var newStack = this.stack[this.cArrPos];
+    newStack.opacity = currentStack.opacity;
+    newStack.fillStyle = currentStack.fillStyle;
+    newStack.strokeStyle = currentStack.strokeStyle;
+    newStack.lineWidth = currentStack.lineWidth;
+    newStack.lineCap = currentStack.lineCap;
+    newStack.lineJoin = currentStack.lineJoin;
+    newStack.miterLimit = currentStack.miterLimit;
+  };
+
+  CVContextData.prototype.setOpacity = function (value) {
+    this.stack[this.cArrPos].opacity = value;
+  };
+
+  CVContextData.prototype.setContext = function (value) {
+    this.nativeContext = value;
+  };
+
+  CVContextData.prototype.fillStyle = function (value) {
+    if (this.stack[this.cArrPos].fillStyle !== value) {
+      this.currentFillStyle = value;
+      this.stack[this.cArrPos].fillStyle = value;
+    }
+  };
+
+  CVContextData.prototype.strokeStyle = function (value) {
+    if (this.stack[this.cArrPos].strokeStyle !== value) {
+      this.currentStrokeStyle = value;
+      this.stack[this.cArrPos].strokeStyle = value;
+    }
+  };
+
+  CVContextData.prototype.lineWidth = function (value) {
+    if (this.stack[this.cArrPos].lineWidth !== value) {
+      this.currentLineWidth = value;
+      this.stack[this.cArrPos].lineWidth = value;
+    }
+  };
+
+  CVContextData.prototype.lineCap = function (value) {
+    if (this.stack[this.cArrPos].lineCap !== value) {
+      this.currentLineCap = value;
+      this.stack[this.cArrPos].lineCap = value;
+    }
+  };
+
+  CVContextData.prototype.lineJoin = function (value) {
+    if (this.stack[this.cArrPos].lineJoin !== value) {
+      this.currentLineJoin = value;
+      this.stack[this.cArrPos].lineJoin = value;
+    }
+  };
+
+  CVContextData.prototype.miterLimit = function (value) {
+    if (this.stack[this.cArrPos].miterLimit !== value) {
+      this.currentMiterLimit = value;
+      this.stack[this.cArrPos].miterLimit = value;
+    }
+  };
+
+  CVContextData.prototype.transform = function (props) {
+    this.transformMat.cloneFromProps(props); // Taking the last transform value from the stored stack of transforms
+
+    var currentTransform = this.cTr; // Applying the last transform value after the new transform to respect the order of transformations
+
+    this.transformMat.multiply(currentTransform); // Storing the new transformed value in the stored transform
+
+    currentTransform.cloneFromProps(this.transformMat.props);
+    var trProps = currentTransform.props; // Applying the new transform to the canvas
+
+    this.nativeContext.setTransform(trProps[0], trProps[1], trProps[4], trProps[5], trProps[12], trProps[13]);
+  };
+
+  CVContextData.prototype.opacity = function (op) {
+    var currentOpacity = this.stack[this.cArrPos].opacity;
+    currentOpacity *= op < 0 ? 0 : op;
+
+    if (this.stack[this.cArrPos].opacity !== currentOpacity) {
+      if (this.currentOpacity !== op) {
+        this.nativeContext.globalAlpha = op;
+        this.currentOpacity = op;
+      }
+
+      this.stack[this.cArrPos].opacity = currentOpacity;
+    }
+  };
+
+  CVContextData.prototype.fill = function (rule) {
+    if (this.appliedFillStyle !== this.currentFillStyle) {
+      this.appliedFillStyle = this.currentFillStyle;
+      this.nativeContext.fillStyle = this.appliedFillStyle;
+    }
+
+    this.nativeContext.fill(rule);
+  };
+
+  CVContextData.prototype.fillRect = function (x, y, w, h) {
+    if (this.appliedFillStyle !== this.currentFillStyle) {
+      this.appliedFillStyle = this.currentFillStyle;
+      this.nativeContext.fillStyle = this.appliedFillStyle;
+    }
+
+    this.nativeContext.fillRect(x, y, w, h);
+  };
+
+  CVContextData.prototype.stroke = function () {
+    if (this.appliedStrokeStyle !== this.currentStrokeStyle) {
+      this.appliedStrokeStyle = this.currentStrokeStyle;
+      this.nativeContext.strokeStyle = this.appliedStrokeStyle;
+    }
+
+    if (this.appliedLineWidth !== this.currentLineWidth) {
+      this.appliedLineWidth = this.currentLineWidth;
+      this.nativeContext.lineWidth = this.appliedLineWidth;
+    }
+
+    if (this.appliedLineCap !== this.currentLineCap) {
+      this.appliedLineCap = this.currentLineCap;
+      this.nativeContext.lineCap = this.appliedLineCap;
+    }
+
+    if (this.appliedLineJoin !== this.currentLineJoin) {
+      this.appliedLineJoin = this.currentLineJoin;
+      this.nativeContext.lineJoin = this.appliedLineJoin;
+    }
+
+    if (this.appliedMiterLimit !== this.currentMiterLimit) {
+      this.appliedMiterLimit = this.currentMiterLimit;
+      this.nativeContext.miterLimit = this.appliedMiterLimit;
+    }
+
+    this.nativeContext.stroke();
   };
 
   function CVCompElement(data, globalData, comp) {
@@ -14405,6 +14833,21 @@
     this.transformMat = new Matrix();
     this.completeLayers = false;
     this.rendererType = 'canvas';
+
+    if (this.renderConfig.clearCanvas) {
+      this.ctxTransform = this.contextData.transform.bind(this.contextData);
+      this.ctxOpacity = this.contextData.opacity.bind(this.contextData);
+      this.ctxFillStyle = this.contextData.fillStyle.bind(this.contextData);
+      this.ctxStrokeStyle = this.contextData.strokeStyle.bind(this.contextData);
+      this.ctxLineWidth = this.contextData.lineWidth.bind(this.contextData);
+      this.ctxLineCap = this.contextData.lineCap.bind(this.contextData);
+      this.ctxLineJoin = this.contextData.lineJoin.bind(this.contextData);
+      this.ctxMiterLimit = this.contextData.miterLimit.bind(this.contextData);
+      this.ctxFill = this.contextData.fill.bind(this.contextData);
+      this.ctxFillRect = this.contextData.fillRect.bind(this.contextData);
+      this.ctxStroke = this.contextData.stroke.bind(this.contextData);
+      this.save = this.contextData.save.bind(this.contextData);
+    }
   }
 
   extendPrototype([CanvasRendererBase], CanvasRenderer);
@@ -14971,6 +15414,7 @@
   };
 
   HTextElement.prototype.renderInnerContent = function () {
+    this.validateText();
     var svgStyle;
 
     if (this.data.singleShape) {
@@ -15554,7 +15998,9 @@
     var len = this.layers ? this.layers.length : 0;
 
     for (i = 0; i < len; i += 1) {
-      this.elements[i].destroy();
+      if (this.elements[i] && this.elements[i].destroy) {
+        this.elements[i].destroy();
+      }
     }
 
     this.elements.length = 0;
@@ -15759,9 +16205,1159 @@
     };
   }();
 
+  function _typeof$2(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof$2 = function _typeof(obj) { return typeof obj; }; } else { _typeof$2 = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof$2(obj); }
+
+  /* eslint-disable */
+
+  /*
+   Copyright 2014 David Bau.
+
+   Permission is hereby granted, free of charge, to any person obtaining
+   a copy of this software and associated documentation files (the
+   "Software"), to deal in the Software without restriction, including
+   without limitation the rights to use, copy, modify, merge, publish,
+   distribute, sublicense, and/or sell copies of the Software, and to
+   permit persons to whom the Software is furnished to do so, subject to
+   the following conditions:
+
+   The above copyright notice and this permission notice shall be
+   included in all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+   */
+  function seedRandom(pool, math) {
+    //
+    // The following constants are related to IEEE 754 limits.
+    //
+    var global = this,
+        width = 256,
+        // each RC4 output is 0 <= x < 256
+    chunks = 6,
+        // at least six RC4 outputs for each double
+    digits = 52,
+        // there are 52 significant digits in a double
+    rngname = 'random',
+        // rngname: name for Math.random and Math.seedrandom
+    startdenom = math.pow(width, chunks),
+        significance = math.pow(2, digits),
+        overflow = significance * 2,
+        mask = width - 1,
+        nodecrypto; // node.js crypto module, initialized at the bottom.
+    //
+    // seedrandom()
+    // This is the seedrandom function described above.
+    //
+
+    function seedrandom(seed, options, callback) {
+      var key = [];
+      options = options === true ? {
+        entropy: true
+      } : options || {}; // Flatten the seed string or build one from local entropy if needed.
+
+      var shortseed = mixkey(flatten(options.entropy ? [seed, tostring(pool)] : seed === null ? autoseed() : seed, 3), key); // Use the seed to initialize an ARC4 generator.
+
+      var arc4 = new ARC4(key); // This function returns a random double in [0, 1) that contains
+      // randomness in every bit of the mantissa of the IEEE 754 value.
+
+      var prng = function prng() {
+        var n = arc4.g(chunks),
+            // Start with a numerator n < 2 ^ 48
+        d = startdenom,
+            //   and denominator d = 2 ^ 48.
+        x = 0; //   and no 'extra last byte'.
+
+        while (n < significance) {
+          // Fill up all significant digits by
+          n = (n + x) * width; //   shifting numerator and
+
+          d *= width; //   denominator and generating a
+
+          x = arc4.g(1); //   new least-significant-byte.
+        }
+
+        while (n >= overflow) {
+          // To avoid rounding up, before adding
+          n /= 2; //   last byte, shift everything
+
+          d /= 2; //   right using integer math until
+
+          x >>>= 1; //   we have exactly the desired bits.
+        }
+
+        return (n + x) / d; // Form the number within [0, 1).
+      };
+
+      prng.int32 = function () {
+        return arc4.g(4) | 0;
+      };
+
+      prng.quick = function () {
+        return arc4.g(4) / 0x100000000;
+      };
+
+      prng["double"] = prng; // Mix the randomness into accumulated entropy.
+
+      mixkey(tostring(arc4.S), pool); // Calling convention: what to return as a function of prng, seed, is_math.
+
+      return (options.pass || callback || function (prng, seed, is_math_call, state) {
+        if (state) {
+          // Load the arc4 state from the given state if it has an S array.
+          if (state.S) {
+            copy(state, arc4);
+          } // Only provide the .state method if requested via options.state.
+
+
+          prng.state = function () {
+            return copy(arc4, {});
+          };
+        } // If called as a method of Math (Math.seedrandom()), mutate
+        // Math.random because that is how seedrandom.js has worked since v1.0.
+
+
+        if (is_math_call) {
+          math[rngname] = prng;
+          return seed;
+        } // Otherwise, it is a newer calling convention, so return the
+        // prng directly.
+        else return prng;
+      })(prng, shortseed, 'global' in options ? options.global : this == math, options.state);
+    }
+
+    math['seed' + rngname] = seedrandom; //
+    // ARC4
+    //
+    // An ARC4 implementation.  The constructor takes a key in the form of
+    // an array of at most (width) integers that should be 0 <= x < (width).
+    //
+    // The g(count) method returns a pseudorandom integer that concatenates
+    // the next (count) outputs from ARC4.  Its return value is a number x
+    // that is in the range 0 <= x < (width ^ count).
+    //
+
+    function ARC4(key) {
+      var t,
+          keylen = key.length,
+          me = this,
+          i = 0,
+          j = me.i = me.j = 0,
+          s = me.S = []; // The empty key [] is treated as [0].
+
+      if (!keylen) {
+        key = [keylen++];
+      } // Set up S using the standard key scheduling algorithm.
+
+
+      while (i < width) {
+        s[i] = i++;
+      }
+
+      for (i = 0; i < width; i++) {
+        s[i] = s[j = mask & j + key[i % keylen] + (t = s[i])];
+        s[j] = t;
+      } // The "g" method returns the next (count) outputs as one number.
+
+
+      me.g = function (count) {
+        // Using instance members instead of closure state nearly doubles speed.
+        var t,
+            r = 0,
+            i = me.i,
+            j = me.j,
+            s = me.S;
+
+        while (count--) {
+          t = s[i = mask & i + 1];
+          r = r * width + s[mask & (s[i] = s[j = mask & j + t]) + (s[j] = t)];
+        }
+
+        me.i = i;
+        me.j = j;
+        return r; // For robust unpredictability, the function call below automatically
+        // discards an initial batch of values.  This is called RC4-drop[256].
+        // See http://google.com/search?q=rsa+fluhrer+response&btnI
+      };
+    } //
+    // copy()
+    // Copies internal state of ARC4 to or from a plain object.
+    //
+
+
+    function copy(f, t) {
+      t.i = f.i;
+      t.j = f.j;
+      t.S = f.S.slice();
+      return t;
+    } //
+    // flatten()
+    // Converts an object tree to nested arrays of strings.
+    //
+
+
+    function flatten(obj, depth) {
+      var result = [],
+          typ = _typeof$2(obj),
+          prop;
+
+      if (depth && typ == 'object') {
+        for (prop in obj) {
+          try {
+            result.push(flatten(obj[prop], depth - 1));
+          } catch (e) {}
+        }
+      }
+
+      return result.length ? result : typ == 'string' ? obj : obj + '\0';
+    } //
+    // mixkey()
+    // Mixes a string seed into a key that is an array of integers, and
+    // returns a shortened string seed that is equivalent to the result key.
+    //
+
+
+    function mixkey(seed, key) {
+      var stringseed = seed + '',
+          smear,
+          j = 0;
+
+      while (j < stringseed.length) {
+        key[mask & j] = mask & (smear ^= key[mask & j] * 19) + stringseed.charCodeAt(j++);
+      }
+
+      return tostring(key);
+    } //
+    // autoseed()
+    // Returns an object for autoseeding, using window.crypto and Node crypto
+    // module if available.
+    //
+
+
+    function autoseed() {
+      try {
+        if (nodecrypto) {
+          return tostring(nodecrypto.randomBytes(width));
+        }
+
+        var out = new Uint8Array(width);
+        (global.crypto || global.msCrypto).getRandomValues(out);
+        return tostring(out);
+      } catch (e) {
+        var browser = global.navigator,
+            plugins = browser && browser.plugins;
+        return [+new Date(), global, plugins, global.screen, tostring(pool)];
+      }
+    } //
+    // tostring()
+    // Converts an array of charcodes to a string
+    //
+
+
+    function tostring(a) {
+      return String.fromCharCode.apply(0, a);
+    } //
+    // When seedrandom.js is loaded, we immediately mix a few bits
+    // from the built-in RNG into the entropy pool.  Because we do
+    // not want to interfere with deterministic PRNG state later,
+    // seedrandom will not call math.random on its own again after
+    // initialization.
+    //
+
+
+    mixkey(math.random(), pool); //
+    // Nodejs and AMD support: export the implementation as a module using
+    // either convention.
+    //
+    // End anonymous scope, and pass initial values.
+  }
+
+  ;
+
+  function initialize$2(BMMath) {
+    seedRandom([], BMMath);
+  }
+
+  var propTypes = {
+    SHAPE: 'shape'
+  };
+
+  function _typeof$1(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof$1 = function _typeof(obj) { return typeof obj; }; } else { _typeof$1 = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof$1(obj); }
+
+  var ExpressionManager = function () {
+    'use strict';
+
+    var ob = {};
+    var Math = BMMath;
+    var window = null;
+    var document = null;
+    var XMLHttpRequest = null;
+    var fetch = null;
+    var frames = null;
+    var _lottieGlobal = {};
+    initialize$2(BMMath);
+
+    function resetFrame() {
+      _lottieGlobal = {};
+    }
+
+    function $bm_isInstanceOfArray(arr) {
+      return arr.constructor === Array || arr.constructor === Float32Array;
+    }
+
+    function isNumerable(tOfV, v) {
+      return tOfV === 'number' || v instanceof Number || tOfV === 'boolean' || tOfV === 'string';
+    }
+
+    function $bm_neg(a) {
+      var tOfA = _typeof$1(a);
+
+      if (tOfA === 'number' || a instanceof Number || tOfA === 'boolean') {
+        return -a;
+      }
+
+      if ($bm_isInstanceOfArray(a)) {
+        var i;
+        var lenA = a.length;
+        var retArr = [];
+
+        for (i = 0; i < lenA; i += 1) {
+          retArr[i] = -a[i];
+        }
+
+        return retArr;
+      }
+
+      if (a.propType) {
+        return a.v;
+      }
+
+      return -a;
+    }
+
+    var easeInBez = BezierFactory.getBezierEasing(0.333, 0, 0.833, 0.833, 'easeIn').get;
+    var easeOutBez = BezierFactory.getBezierEasing(0.167, 0.167, 0.667, 1, 'easeOut').get;
+    var easeInOutBez = BezierFactory.getBezierEasing(0.33, 0, 0.667, 1, 'easeInOut').get;
+
+    function sum(a, b) {
+      var tOfA = _typeof$1(a);
+
+      var tOfB = _typeof$1(b);
+
+      if (isNumerable(tOfA, a) && isNumerable(tOfB, b) || tOfA === 'string' || tOfB === 'string') {
+        return a + b;
+      }
+
+      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
+        a = a.slice(0);
+        a[0] += b;
+        return a;
+      }
+
+      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
+        b = b.slice(0);
+        b[0] = a + b[0];
+        return b;
+      }
+
+      if ($bm_isInstanceOfArray(a) && $bm_isInstanceOfArray(b)) {
+        var i = 0;
+        var lenA = a.length;
+        var lenB = b.length;
+        var retArr = [];
+
+        while (i < lenA || i < lenB) {
+          if ((typeof a[i] === 'number' || a[i] instanceof Number) && (typeof b[i] === 'number' || b[i] instanceof Number)) {
+            retArr[i] = a[i] + b[i];
+          } else {
+            retArr[i] = b[i] === undefined ? a[i] : a[i] || b[i];
+          }
+
+          i += 1;
+        }
+
+        return retArr;
+      }
+
+      return 0;
+    }
+
+    var add = sum;
+
+    function sub(a, b) {
+      var tOfA = _typeof$1(a);
+
+      var tOfB = _typeof$1(b);
+
+      if (isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
+        if (tOfA === 'string') {
+          a = parseInt(a, 10);
+        }
+
+        if (tOfB === 'string') {
+          b = parseInt(b, 10);
+        }
+
+        return a - b;
+      }
+
+      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
+        a = a.slice(0);
+        a[0] -= b;
+        return a;
+      }
+
+      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
+        b = b.slice(0);
+        b[0] = a - b[0];
+        return b;
+      }
+
+      if ($bm_isInstanceOfArray(a) && $bm_isInstanceOfArray(b)) {
+        var i = 0;
+        var lenA = a.length;
+        var lenB = b.length;
+        var retArr = [];
+
+        while (i < lenA || i < lenB) {
+          if ((typeof a[i] === 'number' || a[i] instanceof Number) && (typeof b[i] === 'number' || b[i] instanceof Number)) {
+            retArr[i] = a[i] - b[i];
+          } else {
+            retArr[i] = b[i] === undefined ? a[i] : a[i] || b[i];
+          }
+
+          i += 1;
+        }
+
+        return retArr;
+      }
+
+      return 0;
+    }
+
+    function mul(a, b) {
+      var tOfA = _typeof$1(a);
+
+      var tOfB = _typeof$1(b);
+
+      var arr;
+
+      if (isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
+        return a * b;
+      }
+
+      var i;
+      var len;
+
+      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
+        len = a.length;
+        arr = createTypedArray('float32', len);
+
+        for (i = 0; i < len; i += 1) {
+          arr[i] = a[i] * b;
+        }
+
+        return arr;
+      }
+
+      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
+        len = b.length;
+        arr = createTypedArray('float32', len);
+
+        for (i = 0; i < len; i += 1) {
+          arr[i] = a * b[i];
+        }
+
+        return arr;
+      }
+
+      return 0;
+    }
+
+    function div(a, b) {
+      var tOfA = _typeof$1(a);
+
+      var tOfB = _typeof$1(b);
+
+      var arr;
+
+      if (isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
+        return a / b;
+      }
+
+      var i;
+      var len;
+
+      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
+        len = a.length;
+        arr = createTypedArray('float32', len);
+
+        for (i = 0; i < len; i += 1) {
+          arr[i] = a[i] / b;
+        }
+
+        return arr;
+      }
+
+      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
+        len = b.length;
+        arr = createTypedArray('float32', len);
+
+        for (i = 0; i < len; i += 1) {
+          arr[i] = a / b[i];
+        }
+
+        return arr;
+      }
+
+      return 0;
+    }
+
+    function mod(a, b) {
+      if (typeof a === 'string') {
+        a = parseInt(a, 10);
+      }
+
+      if (typeof b === 'string') {
+        b = parseInt(b, 10);
+      }
+
+      return a % b;
+    }
+
+    var $bm_sum = sum;
+    var $bm_sub = sub;
+    var $bm_mul = mul;
+    var $bm_div = div;
+    var $bm_mod = mod;
+
+    function clamp(num, min, max) {
+      if (min > max) {
+        var mm = max;
+        max = min;
+        min = mm;
+      }
+
+      return Math.min(Math.max(num, min), max);
+    }
+
+    function radiansToDegrees(val) {
+      return val / degToRads;
+    }
+
+    var radians_to_degrees = radiansToDegrees;
+
+    function degreesToRadians(val) {
+      return val * degToRads;
+    }
+
+    var degrees_to_radians = radiansToDegrees;
+    var helperLengthArray = [0, 0, 0, 0, 0, 0];
+
+    function length(arr1, arr2) {
+      if (typeof arr1 === 'number' || arr1 instanceof Number) {
+        arr2 = arr2 || 0;
+        return Math.abs(arr1 - arr2);
+      }
+
+      if (!arr2) {
+        arr2 = helperLengthArray;
+      }
+
+      var i;
+      var len = Math.min(arr1.length, arr2.length);
+      var addedLength = 0;
+
+      for (i = 0; i < len; i += 1) {
+        addedLength += Math.pow(arr2[i] - arr1[i], 2);
+      }
+
+      return Math.sqrt(addedLength);
+    }
+
+    function normalize(vec) {
+      return div(vec, length(vec));
+    }
+
+    function rgbToHsl(val) {
+      var r = val[0];
+      var g = val[1];
+      var b = val[2];
+      var max = Math.max(r, g, b);
+      var min = Math.min(r, g, b);
+      var h;
+      var s;
+      var l = (max + min) / 2;
+
+      if (max === min) {
+        h = 0; // achromatic
+
+        s = 0; // achromatic
+      } else {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+        switch (max) {
+          case r:
+            h = (g - b) / d + (g < b ? 6 : 0);
+            break;
+
+          case g:
+            h = (b - r) / d + 2;
+            break;
+
+          case b:
+            h = (r - g) / d + 4;
+            break;
+
+          default:
+            break;
+        }
+
+        h /= 6;
+      }
+
+      return [h, s, l, val[3]];
+    }
+
+    function hue2rgb(p, q, t) {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    }
+
+    function hslToRgb(val) {
+      var h = val[0];
+      var s = val[1];
+      var l = val[2];
+      var r;
+      var g;
+      var b;
+
+      if (s === 0) {
+        r = l; // achromatic
+
+        b = l; // achromatic
+
+        g = l; // achromatic
+      } else {
+        var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        var p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1 / 3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1 / 3);
+      }
+
+      return [r, g, b, val[3]];
+    }
+
+    function linear(t, tMin, tMax, value1, value2) {
+      if (value1 === undefined || value2 === undefined) {
+        value1 = tMin;
+        value2 = tMax;
+        tMin = 0;
+        tMax = 1;
+      }
+
+      if (tMax < tMin) {
+        var _tMin = tMax;
+        tMax = tMin;
+        tMin = _tMin;
+      }
+
+      if (t <= tMin) {
+        return value1;
+      }
+
+      if (t >= tMax) {
+        return value2;
+      }
+
+      var perc = tMax === tMin ? 0 : (t - tMin) / (tMax - tMin);
+
+      if (!value1.length) {
+        return value1 + (value2 - value1) * perc;
+      }
+
+      var i;
+      var len = value1.length;
+      var arr = createTypedArray('float32', len);
+
+      for (i = 0; i < len; i += 1) {
+        arr[i] = value1[i] + (value2[i] - value1[i]) * perc;
+      }
+
+      return arr;
+    }
+
+    function random(min, max) {
+      if (max === undefined) {
+        if (min === undefined) {
+          min = 0;
+          max = 1;
+        } else {
+          max = min;
+          min = undefined;
+        }
+      }
+
+      if (max.length) {
+        var i;
+        var len = max.length;
+
+        if (!min) {
+          min = createTypedArray('float32', len);
+        }
+
+        var arr = createTypedArray('float32', len);
+        var rnd = BMMath.random();
+
+        for (i = 0; i < len; i += 1) {
+          arr[i] = min[i] + rnd * (max[i] - min[i]);
+        }
+
+        return arr;
+      }
+
+      if (min === undefined) {
+        min = 0;
+      }
+
+      var rndm = BMMath.random();
+      return min + rndm * (max - min);
+    }
+
+    function createPath(points, inTangents, outTangents, closed) {
+      var i;
+      var len = points.length;
+      var path = shapePool.newElement();
+      path.setPathData(!!closed, len);
+      var arrPlaceholder = [0, 0];
+      var inVertexPoint;
+      var outVertexPoint;
+
+      for (i = 0; i < len; i += 1) {
+        inVertexPoint = inTangents && inTangents[i] ? inTangents[i] : arrPlaceholder;
+        outVertexPoint = outTangents && outTangents[i] ? outTangents[i] : arrPlaceholder;
+        path.setTripleAt(points[i][0], points[i][1], outVertexPoint[0] + points[i][0], outVertexPoint[1] + points[i][1], inVertexPoint[0] + points[i][0], inVertexPoint[1] + points[i][1], i, true);
+      }
+
+      return path;
+    }
+
+    function initiateExpression(elem, data, property) {
+      // Bail out if we don't want expressions
+      function noOp(_value) {
+        return _value;
+      }
+
+      if (!elem.globalData.renderConfig.runExpressions) {
+        return noOp;
+      }
+
+      var val = data.x;
+      var needsVelocity = /velocity(?![\w\d])/.test(val);
+
+      var _needsRandom = val.indexOf('random') !== -1;
+
+      var elemType = elem.data.ty;
+      var transform;
+      var $bm_transform;
+      var content;
+      var effect;
+      var thisProperty = property;
+      thisProperty.valueAtTime = thisProperty.getValueAtTime;
+      Object.defineProperty(thisProperty, 'value', {
+        get: function get() {
+          return thisProperty.v;
+        }
+      });
+      elem.comp.frameDuration = 1 / elem.comp.globalData.frameRate;
+      elem.comp.displayStartTime = 0;
+      var inPoint = elem.data.ip / elem.comp.globalData.frameRate;
+      var outPoint = elem.data.op / elem.comp.globalData.frameRate;
+      var width = elem.data.sw ? elem.data.sw : 0;
+      var height = elem.data.sh ? elem.data.sh : 0;
+      var name = elem.data.nm;
+      var loopIn;
+      var loop_in;
+      var loopOut;
+      var loop_out;
+      var smooth;
+      var toWorld;
+      var fromWorld;
+      var fromComp;
+      var toComp;
+      var fromCompToSurface;
+      var position;
+      var rotation;
+      var anchorPoint;
+      var scale;
+      var thisLayer;
+      var thisComp;
+      var mask;
+      var valueAtTime;
+      var velocityAtTime;
+      var scoped_bm_rt; // val = val.replace(/(\\?"|')((http)(s)?(:\/))?\/.*?(\\?"|')/g, "\"\""); // deter potential network calls
+
+      var expression_function = eval('[function _expression_function(){' + val + ';scoped_bm_rt=$bm_rt}]')[0]; // eslint-disable-line no-eval
+
+      var numKeys = property.kf ? data.k.length : 0;
+      var active = !this.data || this.data.hd !== true;
+
+      var wiggle = function wiggle(freq, amp) {
+        var iWiggle;
+        var j;
+        var lenWiggle = this.pv.length ? this.pv.length : 1;
+        var addedAmps = createTypedArray('float32', lenWiggle);
+        freq = 5;
+        var iterations = Math.floor(time * freq);
+        iWiggle = 0;
+        j = 0;
+
+        while (iWiggle < iterations) {
+          // var rnd = BMMath.random();
+          for (j = 0; j < lenWiggle; j += 1) {
+            addedAmps[j] += -amp + amp * 2 * BMMath.random(); // addedAmps[j] += -amp + amp*2*rnd;
+          }
+
+          iWiggle += 1;
+        } // var rnd2 = BMMath.random();
+
+
+        var periods = time * freq;
+        var perc = periods - Math.floor(periods);
+        var arr = createTypedArray('float32', lenWiggle);
+
+        if (lenWiggle > 1) {
+          for (j = 0; j < lenWiggle; j += 1) {
+            arr[j] = this.pv[j] + addedAmps[j] + (-amp + amp * 2 * BMMath.random()) * perc; // arr[j] = this.pv[j] + addedAmps[j] + (-amp + amp*2*rnd)*perc;
+            // arr[i] = this.pv[i] + addedAmp + amp1*perc + amp2*(1-perc);
+          }
+
+          return arr;
+        }
+
+        return this.pv + addedAmps[0] + (-amp + amp * 2 * BMMath.random()) * perc;
+      }.bind(this);
+
+      if (thisProperty.loopIn) {
+        loopIn = thisProperty.loopIn.bind(thisProperty);
+        loop_in = loopIn;
+      }
+
+      if (thisProperty.loopOut) {
+        loopOut = thisProperty.loopOut.bind(thisProperty);
+        loop_out = loopOut;
+      }
+
+      if (thisProperty.smooth) {
+        smooth = thisProperty.smooth.bind(thisProperty);
+      }
+
+      function loopInDuration(type, duration) {
+        return loopIn(type, duration, true);
+      }
+
+      function loopOutDuration(type, duration) {
+        return loopOut(type, duration, true);
+      }
+
+      if (this.getValueAtTime) {
+        valueAtTime = this.getValueAtTime.bind(this);
+      }
+
+      if (this.getVelocityAtTime) {
+        velocityAtTime = this.getVelocityAtTime.bind(this);
+      }
+
+      var comp = elem.comp.globalData.projectInterface.bind(elem.comp.globalData.projectInterface);
+
+      function lookAt(elem1, elem2) {
+        var fVec = [elem2[0] - elem1[0], elem2[1] - elem1[1], elem2[2] - elem1[2]];
+        var pitch = Math.atan2(fVec[0], Math.sqrt(fVec[1] * fVec[1] + fVec[2] * fVec[2])) / degToRads;
+        var yaw = -Math.atan2(fVec[1], fVec[2]) / degToRads;
+        return [yaw, pitch, 0];
+      }
+
+      function easeOut(t, tMin, tMax, val1, val2) {
+        return applyEase(easeOutBez, t, tMin, tMax, val1, val2);
+      }
+
+      function easeIn(t, tMin, tMax, val1, val2) {
+        return applyEase(easeInBez, t, tMin, tMax, val1, val2);
+      }
+
+      function ease(t, tMin, tMax, val1, val2) {
+        return applyEase(easeInOutBez, t, tMin, tMax, val1, val2);
+      }
+
+      function applyEase(fn, t, tMin, tMax, val1, val2) {
+        if (val1 === undefined) {
+          val1 = tMin;
+          val2 = tMax;
+        } else {
+          t = (t - tMin) / (tMax - tMin);
+        }
+
+        if (t > 1) {
+          t = 1;
+        } else if (t < 0) {
+          t = 0;
+        }
+
+        var mult = fn(t);
+
+        if ($bm_isInstanceOfArray(val1)) {
+          var iKey;
+          var lenKey = val1.length;
+          var arr = createTypedArray('float32', lenKey);
+
+          for (iKey = 0; iKey < lenKey; iKey += 1) {
+            arr[iKey] = (val2[iKey] - val1[iKey]) * mult + val1[iKey];
+          }
+
+          return arr;
+        }
+
+        return (val2 - val1) * mult + val1;
+      }
+
+      function nearestKey(time) {
+        var iKey;
+        var lenKey = data.k.length;
+        var index;
+        var keyTime;
+
+        if (!data.k.length || typeof data.k[0] === 'number') {
+          index = 0;
+          keyTime = 0;
+        } else {
+          index = -1;
+          time *= elem.comp.globalData.frameRate;
+
+          if (time < data.k[0].t) {
+            index = 1;
+            keyTime = data.k[0].t;
+          } else {
+            for (iKey = 0; iKey < lenKey - 1; iKey += 1) {
+              if (time === data.k[iKey].t) {
+                index = iKey + 1;
+                keyTime = data.k[iKey].t;
+                break;
+              } else if (time > data.k[iKey].t && time < data.k[iKey + 1].t) {
+                if (time - data.k[iKey].t > data.k[iKey + 1].t - time) {
+                  index = iKey + 2;
+                  keyTime = data.k[iKey + 1].t;
+                } else {
+                  index = iKey + 1;
+                  keyTime = data.k[iKey].t;
+                }
+
+                break;
+              }
+            }
+
+            if (index === -1) {
+              index = iKey + 1;
+              keyTime = data.k[iKey].t;
+            }
+          }
+        }
+
+        var obKey = {};
+        obKey.index = index;
+        obKey.time = keyTime / elem.comp.globalData.frameRate;
+        return obKey;
+      }
+
+      function key(ind) {
+        var obKey;
+        var iKey;
+        var lenKey;
+
+        if (!data.k.length || typeof data.k[0] === 'number') {
+          throw new Error('The property has no keyframe at index ' + ind);
+        }
+
+        ind -= 1;
+        obKey = {
+          time: data.k[ind].t / elem.comp.globalData.frameRate,
+          value: []
+        };
+        var arr = Object.prototype.hasOwnProperty.call(data.k[ind], 's') ? data.k[ind].s : data.k[ind - 1].e;
+        lenKey = arr.length;
+
+        for (iKey = 0; iKey < lenKey; iKey += 1) {
+          obKey[iKey] = arr[iKey];
+          obKey.value[iKey] = arr[iKey];
+        }
+
+        return obKey;
+      }
+
+      function framesToTime(fr, fps) {
+        if (!fps) {
+          fps = elem.comp.globalData.frameRate;
+        }
+
+        return fr / fps;
+      }
+
+      function timeToFrames(t, fps) {
+        if (!t && t !== 0) {
+          t = time;
+        }
+
+        if (!fps) {
+          fps = elem.comp.globalData.frameRate;
+        }
+
+        return t * fps;
+      }
+
+      function seedRandom(seed) {
+        BMMath.seedrandom(randSeed + seed);
+      }
+
+      function sourceRectAtTime() {
+        return elem.sourceRectAtTime();
+      }
+
+      function substring(init, end) {
+        if (typeof value === 'string') {
+          if (end === undefined) {
+            return value.substring(init);
+          }
+
+          return value.substring(init, end);
+        }
+
+        return '';
+      }
+
+      function substr(init, end) {
+        if (typeof value === 'string') {
+          if (end === undefined) {
+            return value.substr(init);
+          }
+
+          return value.substr(init, end);
+        }
+
+        return '';
+      }
+
+      function posterizeTime(framesPerSecond) {
+        time = framesPerSecond === 0 ? 0 : Math.floor(time * framesPerSecond) / framesPerSecond;
+        value = valueAtTime(time);
+      }
+
+      var time;
+      var velocity;
+      var value;
+      var text;
+      var textIndex;
+      var textTotal;
+      var selectorValue;
+      var index = elem.data.ind;
+      var hasParent = !!(elem.hierarchy && elem.hierarchy.length);
+      var parent;
+      var randSeed = Math.floor(Math.random() * 1000000);
+      var globalData = elem.globalData;
+
+      function executeExpression(_value) {
+        // globalData.pushExpression();
+        value = _value;
+
+        if (this.frameExpressionId === elem.globalData.frameId && this.propType !== 'textSelector') {
+          return value;
+        }
+
+        if (this.propType === 'textSelector') {
+          textIndex = this.textIndex;
+          textTotal = this.textTotal;
+          selectorValue = this.selectorValue;
+        }
+
+        if (!thisLayer) {
+          text = elem.layerInterface.text;
+          thisLayer = elem.layerInterface;
+          thisComp = elem.comp.compInterface;
+          toWorld = thisLayer.toWorld.bind(thisLayer);
+          fromWorld = thisLayer.fromWorld.bind(thisLayer);
+          fromComp = thisLayer.fromComp.bind(thisLayer);
+          toComp = thisLayer.toComp.bind(thisLayer);
+          mask = thisLayer.mask ? thisLayer.mask.bind(thisLayer) : null;
+          fromCompToSurface = fromComp;
+        }
+
+        if (!transform) {
+          transform = elem.layerInterface('ADBE Transform Group');
+          $bm_transform = transform;
+
+          if (transform) {
+            anchorPoint = transform.anchorPoint;
+            /* position = transform.position;
+                      rotation = transform.rotation;
+                      scale = transform.scale; */
+          }
+        }
+
+        if (elemType === 4 && !content) {
+          content = thisLayer('ADBE Root Vectors Group');
+        }
+
+        if (!effect) {
+          effect = thisLayer(4);
+        }
+
+        hasParent = !!(elem.hierarchy && elem.hierarchy.length);
+
+        if (hasParent && !parent) {
+          parent = elem.hierarchy[0].layerInterface;
+        }
+
+        time = this.comp.renderedFrame / this.comp.globalData.frameRate;
+
+        if (_needsRandom) {
+          seedRandom(randSeed + time);
+        }
+
+        if (needsVelocity) {
+          velocity = velocityAtTime(time);
+        }
+
+        expression_function();
+        this.frameExpressionId = elem.globalData.frameId; // TODO: Check if it's possible to return on ShapeInterface the .v value
+        // Changed this to a ternary operation because Rollup failed compiling it correctly
+
+        scoped_bm_rt = scoped_bm_rt.propType === propTypes.SHAPE ? scoped_bm_rt.v : scoped_bm_rt;
+        return scoped_bm_rt;
+      } // Bundlers will see these as dead code and unless we reference them
+
+
+      executeExpression.__preventDeadCodeRemoval = [$bm_transform, anchorPoint, time, velocity, inPoint, outPoint, width, height, name, loop_in, loop_out, smooth, toComp, fromCompToSurface, toWorld, fromWorld, mask, position, rotation, scale, thisComp, numKeys, active, wiggle, loopInDuration, loopOutDuration, comp, lookAt, easeOut, easeIn, ease, nearestKey, key, text, textIndex, textTotal, selectorValue, framesToTime, timeToFrames, sourceRectAtTime, substring, substr, posterizeTime, index, globalData];
+      return executeExpression;
+    }
+
+    ob.initiateExpression = initiateExpression;
+    ob.__preventDeadCodeRemoval = [window, document, XMLHttpRequest, fetch, frames, $bm_neg, add, $bm_sum, $bm_sub, $bm_mul, $bm_div, $bm_mod, clamp, radians_to_degrees, degreesToRadians, degrees_to_radians, normalize, rgbToHsl, hslToRgb, linear, random, createPath, _lottieGlobal];
+    ob.resetFrame = resetFrame;
+    return ob;
+  }();
+
   var Expressions = function () {
     var ob = {};
     ob.initExpressions = initExpressions;
+    ob.resetFrame = ExpressionManager.resetFrame;
 
     function initExpressions(animation) {
       var stackCount = 0;
@@ -17140,8 +18736,6 @@
 
   var TextExpressionInterface = function () {
     return function (elem) {
-      var _prevValue;
-
       var _sourceText;
 
       function _thisLayerFunction(name) {
@@ -17159,8 +18753,7 @@
           elem.textProperty.getValue();
           var stringValue = elem.textProperty.currentData.t;
 
-          if (stringValue !== _prevValue) {
-            _prevValue = elem.textProperty.currentData.t;
+          if (!_sourceText || stringValue !== _sourceText.value) {
             _sourceText = new String(stringValue); // eslint-disable-line no-new-wrappers
             // If stringValue is an empty string, eval returns undefined, so it has to be returned as a String primitive
 
@@ -17182,7 +18775,7 @@
     };
   }();
 
-  function _typeof$2(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof$2 = function _typeof(obj) { return typeof obj; }; } else { _typeof$2 = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof$2(obj); }
+  function _typeof(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
   var FootageInterface = function () {
     var outlineInterfaceFactory = function outlineInterfaceFactory(elem) {
@@ -17200,7 +18793,7 @@
           currentPropertyName = value;
           currentProperty = currentProperty[value];
 
-          if (_typeof$2(currentProperty) === 'object') {
+          if (_typeof(currentProperty) === 'object') {
             return searchProperty;
           }
 
@@ -17213,7 +18806,7 @@
           var index = parseInt(value.substr(propertyNameIndex + currentPropertyName.length), 10);
           currentProperty = currentProperty[index];
 
-          if (_typeof$2(currentProperty) === 'object') {
+          if (_typeof(currentProperty) === 'object') {
             return searchProperty;
           }
 
@@ -17267,1153 +18860,6 @@
   function getInterface(type) {
     return interfaces[type] || null;
   }
-
-  function _typeof$1(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof$1 = function _typeof(obj) { return typeof obj; }; } else { _typeof$1 = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof$1(obj); }
-
-  /* eslint-disable */
-
-  /*
-   Copyright 2014 David Bau.
-
-   Permission is hereby granted, free of charge, to any person obtaining
-   a copy of this software and associated documentation files (the
-   "Software"), to deal in the Software without restriction, including
-   without limitation the rights to use, copy, modify, merge, publish,
-   distribute, sublicense, and/or sell copies of the Software, and to
-   permit persons to whom the Software is furnished to do so, subject to
-   the following conditions:
-
-   The above copyright notice and this permission notice shall be
-   included in all copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-   */
-  function seedRandom(pool, math) {
-    //
-    // The following constants are related to IEEE 754 limits.
-    //
-    var global = this,
-        width = 256,
-        // each RC4 output is 0 <= x < 256
-    chunks = 6,
-        // at least six RC4 outputs for each double
-    digits = 52,
-        // there are 52 significant digits in a double
-    rngname = 'random',
-        // rngname: name for Math.random and Math.seedrandom
-    startdenom = math.pow(width, chunks),
-        significance = math.pow(2, digits),
-        overflow = significance * 2,
-        mask = width - 1,
-        nodecrypto; // node.js crypto module, initialized at the bottom.
-    //
-    // seedrandom()
-    // This is the seedrandom function described above.
-    //
-
-    function seedrandom(seed, options, callback) {
-      var key = [];
-      options = options === true ? {
-        entropy: true
-      } : options || {}; // Flatten the seed string or build one from local entropy if needed.
-
-      var shortseed = mixkey(flatten(options.entropy ? [seed, tostring(pool)] : seed === null ? autoseed() : seed, 3), key); // Use the seed to initialize an ARC4 generator.
-
-      var arc4 = new ARC4(key); // This function returns a random double in [0, 1) that contains
-      // randomness in every bit of the mantissa of the IEEE 754 value.
-
-      var prng = function prng() {
-        var n = arc4.g(chunks),
-            // Start with a numerator n < 2 ^ 48
-        d = startdenom,
-            //   and denominator d = 2 ^ 48.
-        x = 0; //   and no 'extra last byte'.
-
-        while (n < significance) {
-          // Fill up all significant digits by
-          n = (n + x) * width; //   shifting numerator and
-
-          d *= width; //   denominator and generating a
-
-          x = arc4.g(1); //   new least-significant-byte.
-        }
-
-        while (n >= overflow) {
-          // To avoid rounding up, before adding
-          n /= 2; //   last byte, shift everything
-
-          d /= 2; //   right using integer math until
-
-          x >>>= 1; //   we have exactly the desired bits.
-        }
-
-        return (n + x) / d; // Form the number within [0, 1).
-      };
-
-      prng.int32 = function () {
-        return arc4.g(4) | 0;
-      };
-
-      prng.quick = function () {
-        return arc4.g(4) / 0x100000000;
-      };
-
-      prng["double"] = prng; // Mix the randomness into accumulated entropy.
-
-      mixkey(tostring(arc4.S), pool); // Calling convention: what to return as a function of prng, seed, is_math.
-
-      return (options.pass || callback || function (prng, seed, is_math_call, state) {
-        if (state) {
-          // Load the arc4 state from the given state if it has an S array.
-          if (state.S) {
-            copy(state, arc4);
-          } // Only provide the .state method if requested via options.state.
-
-
-          prng.state = function () {
-            return copy(arc4, {});
-          };
-        } // If called as a method of Math (Math.seedrandom()), mutate
-        // Math.random because that is how seedrandom.js has worked since v1.0.
-
-
-        if (is_math_call) {
-          math[rngname] = prng;
-          return seed;
-        } // Otherwise, it is a newer calling convention, so return the
-        // prng directly.
-        else return prng;
-      })(prng, shortseed, 'global' in options ? options.global : this == math, options.state);
-    }
-
-    math['seed' + rngname] = seedrandom; //
-    // ARC4
-    //
-    // An ARC4 implementation.  The constructor takes a key in the form of
-    // an array of at most (width) integers that should be 0 <= x < (width).
-    //
-    // The g(count) method returns a pseudorandom integer that concatenates
-    // the next (count) outputs from ARC4.  Its return value is a number x
-    // that is in the range 0 <= x < (width ^ count).
-    //
-
-    function ARC4(key) {
-      var t,
-          keylen = key.length,
-          me = this,
-          i = 0,
-          j = me.i = me.j = 0,
-          s = me.S = []; // The empty key [] is treated as [0].
-
-      if (!keylen) {
-        key = [keylen++];
-      } // Set up S using the standard key scheduling algorithm.
-
-
-      while (i < width) {
-        s[i] = i++;
-      }
-
-      for (i = 0; i < width; i++) {
-        s[i] = s[j = mask & j + key[i % keylen] + (t = s[i])];
-        s[j] = t;
-      } // The "g" method returns the next (count) outputs as one number.
-
-
-      me.g = function (count) {
-        // Using instance members instead of closure state nearly doubles speed.
-        var t,
-            r = 0,
-            i = me.i,
-            j = me.j,
-            s = me.S;
-
-        while (count--) {
-          t = s[i = mask & i + 1];
-          r = r * width + s[mask & (s[i] = s[j = mask & j + t]) + (s[j] = t)];
-        }
-
-        me.i = i;
-        me.j = j;
-        return r; // For robust unpredictability, the function call below automatically
-        // discards an initial batch of values.  This is called RC4-drop[256].
-        // See http://google.com/search?q=rsa+fluhrer+response&btnI
-      };
-    } //
-    // copy()
-    // Copies internal state of ARC4 to or from a plain object.
-    //
-
-
-    function copy(f, t) {
-      t.i = f.i;
-      t.j = f.j;
-      t.S = f.S.slice();
-      return t;
-    } //
-    // flatten()
-    // Converts an object tree to nested arrays of strings.
-    //
-
-
-    function flatten(obj, depth) {
-      var result = [],
-          typ = _typeof$1(obj),
-          prop;
-
-      if (depth && typ == 'object') {
-        for (prop in obj) {
-          try {
-            result.push(flatten(obj[prop], depth - 1));
-          } catch (e) {}
-        }
-      }
-
-      return result.length ? result : typ == 'string' ? obj : obj + '\0';
-    } //
-    // mixkey()
-    // Mixes a string seed into a key that is an array of integers, and
-    // returns a shortened string seed that is equivalent to the result key.
-    //
-
-
-    function mixkey(seed, key) {
-      var stringseed = seed + '',
-          smear,
-          j = 0;
-
-      while (j < stringseed.length) {
-        key[mask & j] = mask & (smear ^= key[mask & j] * 19) + stringseed.charCodeAt(j++);
-      }
-
-      return tostring(key);
-    } //
-    // autoseed()
-    // Returns an object for autoseeding, using window.crypto and Node crypto
-    // module if available.
-    //
-
-
-    function autoseed() {
-      try {
-        if (nodecrypto) {
-          return tostring(nodecrypto.randomBytes(width));
-        }
-
-        var out = new Uint8Array(width);
-        (global.crypto || global.msCrypto).getRandomValues(out);
-        return tostring(out);
-      } catch (e) {
-        var browser = global.navigator,
-            plugins = browser && browser.plugins;
-        return [+new Date(), global, plugins, global.screen, tostring(pool)];
-      }
-    } //
-    // tostring()
-    // Converts an array of charcodes to a string
-    //
-
-
-    function tostring(a) {
-      return String.fromCharCode.apply(0, a);
-    } //
-    // When seedrandom.js is loaded, we immediately mix a few bits
-    // from the built-in RNG into the entropy pool.  Because we do
-    // not want to interfere with deterministic PRNG state later,
-    // seedrandom will not call math.random on its own again after
-    // initialization.
-    //
-
-
-    mixkey(math.random(), pool); //
-    // Nodejs and AMD support: export the implementation as a module using
-    // either convention.
-    //
-    // End anonymous scope, and pass initial values.
-  }
-
-  ;
-
-  function initialize$2(BMMath) {
-    seedRandom([], BMMath);
-  }
-
-  var propTypes = {
-    SHAPE: 'shape'
-  };
-
-  function _typeof(obj) { "@babel/helpers - typeof"; if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
-
-  var ExpressionManager = function () {
-    'use strict';
-
-    var ob = {};
-    var Math = BMMath;
-    var window = null;
-    var document = null;
-    var XMLHttpRequest = null;
-    var fetch = null;
-    var frames = null;
-    initialize$2(BMMath);
-
-    function $bm_isInstanceOfArray(arr) {
-      return arr.constructor === Array || arr.constructor === Float32Array;
-    }
-
-    function isNumerable(tOfV, v) {
-      return tOfV === 'number' || tOfV === 'boolean' || tOfV === 'string' || v instanceof Number;
-    }
-
-    function $bm_neg(a) {
-      var tOfA = _typeof(a);
-
-      if (tOfA === 'number' || tOfA === 'boolean' || a instanceof Number) {
-        return -a;
-      }
-
-      if ($bm_isInstanceOfArray(a)) {
-        var i;
-        var lenA = a.length;
-        var retArr = [];
-
-        for (i = 0; i < lenA; i += 1) {
-          retArr[i] = -a[i];
-        }
-
-        return retArr;
-      }
-
-      if (a.propType) {
-        return a.v;
-      }
-
-      return -a;
-    }
-
-    var easeInBez = BezierFactory.getBezierEasing(0.333, 0, 0.833, 0.833, 'easeIn').get;
-    var easeOutBez = BezierFactory.getBezierEasing(0.167, 0.167, 0.667, 1, 'easeOut').get;
-    var easeInOutBez = BezierFactory.getBezierEasing(0.33, 0, 0.667, 1, 'easeInOut').get;
-
-    function sum(a, b) {
-      var tOfA = _typeof(a);
-
-      var tOfB = _typeof(b);
-
-      if (tOfA === 'string' || tOfB === 'string') {
-        return a + b;
-      }
-
-      if (isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
-        return a + b;
-      }
-
-      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
-        a = a.slice(0);
-        a[0] += b;
-        return a;
-      }
-
-      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
-        b = b.slice(0);
-        b[0] = a + b[0];
-        return b;
-      }
-
-      if ($bm_isInstanceOfArray(a) && $bm_isInstanceOfArray(b)) {
-        var i = 0;
-        var lenA = a.length;
-        var lenB = b.length;
-        var retArr = [];
-
-        while (i < lenA || i < lenB) {
-          if ((typeof a[i] === 'number' || a[i] instanceof Number) && (typeof b[i] === 'number' || b[i] instanceof Number)) {
-            retArr[i] = a[i] + b[i];
-          } else {
-            retArr[i] = b[i] === undefined ? a[i] : a[i] || b[i];
-          }
-
-          i += 1;
-        }
-
-        return retArr;
-      }
-
-      return 0;
-    }
-
-    var add = sum;
-
-    function sub(a, b) {
-      var tOfA = _typeof(a);
-
-      var tOfB = _typeof(b);
-
-      if (isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
-        if (tOfA === 'string') {
-          a = parseInt(a, 10);
-        }
-
-        if (tOfB === 'string') {
-          b = parseInt(b, 10);
-        }
-
-        return a - b;
-      }
-
-      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
-        a = a.slice(0);
-        a[0] -= b;
-        return a;
-      }
-
-      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
-        b = b.slice(0);
-        b[0] = a - b[0];
-        return b;
-      }
-
-      if ($bm_isInstanceOfArray(a) && $bm_isInstanceOfArray(b)) {
-        var i = 0;
-        var lenA = a.length;
-        var lenB = b.length;
-        var retArr = [];
-
-        while (i < lenA || i < lenB) {
-          if ((typeof a[i] === 'number' || a[i] instanceof Number) && (typeof b[i] === 'number' || b[i] instanceof Number)) {
-            retArr[i] = a[i] - b[i];
-          } else {
-            retArr[i] = b[i] === undefined ? a[i] : a[i] || b[i];
-          }
-
-          i += 1;
-        }
-
-        return retArr;
-      }
-
-      return 0;
-    }
-
-    function mul(a, b) {
-      var tOfA = _typeof(a);
-
-      var tOfB = _typeof(b);
-
-      var arr;
-
-      if (isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
-        return a * b;
-      }
-
-      var i;
-      var len;
-
-      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
-        len = a.length;
-        arr = createTypedArray('float32', len);
-
-        for (i = 0; i < len; i += 1) {
-          arr[i] = a[i] * b;
-        }
-
-        return arr;
-      }
-
-      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
-        len = b.length;
-        arr = createTypedArray('float32', len);
-
-        for (i = 0; i < len; i += 1) {
-          arr[i] = a * b[i];
-        }
-
-        return arr;
-      }
-
-      return 0;
-    }
-
-    function div(a, b) {
-      var tOfA = _typeof(a);
-
-      var tOfB = _typeof(b);
-
-      var arr;
-
-      if (isNumerable(tOfA, a) && isNumerable(tOfB, b)) {
-        return a / b;
-      }
-
-      var i;
-      var len;
-
-      if ($bm_isInstanceOfArray(a) && isNumerable(tOfB, b)) {
-        len = a.length;
-        arr = createTypedArray('float32', len);
-
-        for (i = 0; i < len; i += 1) {
-          arr[i] = a[i] / b;
-        }
-
-        return arr;
-      }
-
-      if (isNumerable(tOfA, a) && $bm_isInstanceOfArray(b)) {
-        len = b.length;
-        arr = createTypedArray('float32', len);
-
-        for (i = 0; i < len; i += 1) {
-          arr[i] = a / b[i];
-        }
-
-        return arr;
-      }
-
-      return 0;
-    }
-
-    function mod(a, b) {
-      if (typeof a === 'string') {
-        a = parseInt(a, 10);
-      }
-
-      if (typeof b === 'string') {
-        b = parseInt(b, 10);
-      }
-
-      return a % b;
-    }
-
-    var $bm_sum = sum;
-    var $bm_sub = sub;
-    var $bm_mul = mul;
-    var $bm_div = div;
-    var $bm_mod = mod;
-
-    function clamp(num, min, max) {
-      if (min > max) {
-        var mm = max;
-        max = min;
-        min = mm;
-      }
-
-      return Math.min(Math.max(num, min), max);
-    }
-
-    function radiansToDegrees(val) {
-      return val / degToRads;
-    }
-
-    var radians_to_degrees = radiansToDegrees;
-
-    function degreesToRadians(val) {
-      return val * degToRads;
-    }
-
-    var degrees_to_radians = radiansToDegrees;
-    var helperLengthArray = [0, 0, 0, 0, 0, 0];
-
-    function length(arr1, arr2) {
-      if (typeof arr1 === 'number' || arr1 instanceof Number) {
-        arr2 = arr2 || 0;
-        return Math.abs(arr1 - arr2);
-      }
-
-      if (!arr2) {
-        arr2 = helperLengthArray;
-      }
-
-      var i;
-      var len = Math.min(arr1.length, arr2.length);
-      var addedLength = 0;
-
-      for (i = 0; i < len; i += 1) {
-        addedLength += Math.pow(arr2[i] - arr1[i], 2);
-      }
-
-      return Math.sqrt(addedLength);
-    }
-
-    function normalize(vec) {
-      return div(vec, length(vec));
-    }
-
-    function rgbToHsl(val) {
-      var r = val[0];
-      var g = val[1];
-      var b = val[2];
-      var max = Math.max(r, g, b);
-      var min = Math.min(r, g, b);
-      var h;
-      var s;
-      var l = (max + min) / 2;
-
-      if (max === min) {
-        h = 0; // achromatic
-
-        s = 0; // achromatic
-      } else {
-        var d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-
-        switch (max) {
-          case r:
-            h = (g - b) / d + (g < b ? 6 : 0);
-            break;
-
-          case g:
-            h = (b - r) / d + 2;
-            break;
-
-          case b:
-            h = (r - g) / d + 4;
-            break;
-
-          default:
-            break;
-        }
-
-        h /= 6;
-      }
-
-      return [h, s, l, val[3]];
-    }
-
-    function hue2rgb(p, q, t) {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    }
-
-    function hslToRgb(val) {
-      var h = val[0];
-      var s = val[1];
-      var l = val[2];
-      var r;
-      var g;
-      var b;
-
-      if (s === 0) {
-        r = l; // achromatic
-
-        b = l; // achromatic
-
-        g = l; // achromatic
-      } else {
-        var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        var p = 2 * l - q;
-        r = hue2rgb(p, q, h + 1 / 3);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1 / 3);
-      }
-
-      return [r, g, b, val[3]];
-    }
-
-    function linear(t, tMin, tMax, value1, value2) {
-      if (value1 === undefined || value2 === undefined) {
-        value1 = tMin;
-        value2 = tMax;
-        tMin = 0;
-        tMax = 1;
-      }
-
-      if (tMax < tMin) {
-        var _tMin = tMax;
-        tMax = tMin;
-        tMin = _tMin;
-      }
-
-      if (t <= tMin) {
-        return value1;
-      }
-
-      if (t >= tMax) {
-        return value2;
-      }
-
-      var perc = tMax === tMin ? 0 : (t - tMin) / (tMax - tMin);
-
-      if (!value1.length) {
-        return value1 + (value2 - value1) * perc;
-      }
-
-      var i;
-      var len = value1.length;
-      var arr = createTypedArray('float32', len);
-
-      for (i = 0; i < len; i += 1) {
-        arr[i] = value1[i] + (value2[i] - value1[i]) * perc;
-      }
-
-      return arr;
-    }
-
-    function random(min, max) {
-      if (max === undefined) {
-        if (min === undefined) {
-          min = 0;
-          max = 1;
-        } else {
-          max = min;
-          min = undefined;
-        }
-      }
-
-      if (max.length) {
-        var i;
-        var len = max.length;
-
-        if (!min) {
-          min = createTypedArray('float32', len);
-        }
-
-        var arr = createTypedArray('float32', len);
-        var rnd = BMMath.random();
-
-        for (i = 0; i < len; i += 1) {
-          arr[i] = min[i] + rnd * (max[i] - min[i]);
-        }
-
-        return arr;
-      }
-
-      if (min === undefined) {
-        min = 0;
-      }
-
-      var rndm = BMMath.random();
-      return min + rndm * (max - min);
-    }
-
-    function createPath(points, inTangents, outTangents, closed) {
-      var i;
-      var len = points.length;
-      var path = shapePool.newElement();
-      path.setPathData(!!closed, len);
-      var arrPlaceholder = [0, 0];
-      var inVertexPoint;
-      var outVertexPoint;
-
-      for (i = 0; i < len; i += 1) {
-        inVertexPoint = inTangents && inTangents[i] ? inTangents[i] : arrPlaceholder;
-        outVertexPoint = outTangents && outTangents[i] ? outTangents[i] : arrPlaceholder;
-        path.setTripleAt(points[i][0], points[i][1], outVertexPoint[0] + points[i][0], outVertexPoint[1] + points[i][1], inVertexPoint[0] + points[i][0], inVertexPoint[1] + points[i][1], i, true);
-      }
-
-      return path;
-    }
-
-    function initiateExpression(elem, data, property) {
-      // Bail out if we don't want expressions
-      function noOp(_value) {
-        return _value;
-      }
-
-      if (!elem.globalData.renderConfig.runExpressions) {
-        return noOp;
-      }
-
-      var val = data.x;
-      var needsVelocity = /velocity(?![\w\d])/.test(val);
-
-      var _needsRandom = val.indexOf('random') !== -1;
-
-      var elemType = elem.data.ty;
-      var transform;
-      var $bm_transform;
-      var content;
-      var effect;
-      var thisProperty = property;
-      thisProperty.valueAtTime = thisProperty.getValueAtTime;
-      Object.defineProperty(thisProperty, 'value', {
-        get: function get() {
-          return thisProperty.v;
-        }
-      });
-      elem.comp.frameDuration = 1 / elem.comp.globalData.frameRate;
-      elem.comp.displayStartTime = 0;
-      var inPoint = elem.data.ip / elem.comp.globalData.frameRate;
-      var outPoint = elem.data.op / elem.comp.globalData.frameRate;
-      var width = elem.data.sw ? elem.data.sw : 0;
-      var height = elem.data.sh ? elem.data.sh : 0;
-      var name = elem.data.nm;
-      var loopIn;
-      var loop_in;
-      var loopOut;
-      var loop_out;
-      var smooth;
-      var toWorld;
-      var fromWorld;
-      var fromComp;
-      var toComp;
-      var fromCompToSurface;
-      var position;
-      var rotation;
-      var anchorPoint;
-      var scale;
-      var thisLayer;
-      var thisComp;
-      var mask;
-      var valueAtTime;
-      var velocityAtTime;
-      var scoped_bm_rt; // val = val.replace(/(\\?"|')((http)(s)?(:\/))?\/.*?(\\?"|')/g, "\"\""); // deter potential network calls
-
-      var expression_function = eval('[function _expression_function(){' + val + ';scoped_bm_rt=$bm_rt}]')[0]; // eslint-disable-line no-eval
-
-      var numKeys = property.kf ? data.k.length : 0;
-      var active = !this.data || this.data.hd !== true;
-
-      var wiggle = function wiggle(freq, amp) {
-        var iWiggle;
-        var j;
-        var lenWiggle = this.pv.length ? this.pv.length : 1;
-        var addedAmps = createTypedArray('float32', lenWiggle);
-        freq = 5;
-        var iterations = Math.floor(time * freq);
-        iWiggle = 0;
-        j = 0;
-
-        while (iWiggle < iterations) {
-          // var rnd = BMMath.random();
-          for (j = 0; j < lenWiggle; j += 1) {
-            addedAmps[j] += -amp + amp * 2 * BMMath.random(); // addedAmps[j] += -amp + amp*2*rnd;
-          }
-
-          iWiggle += 1;
-        } // var rnd2 = BMMath.random();
-
-
-        var periods = time * freq;
-        var perc = periods - Math.floor(periods);
-        var arr = createTypedArray('float32', lenWiggle);
-
-        if (lenWiggle > 1) {
-          for (j = 0; j < lenWiggle; j += 1) {
-            arr[j] = this.pv[j] + addedAmps[j] + (-amp + amp * 2 * BMMath.random()) * perc; // arr[j] = this.pv[j] + addedAmps[j] + (-amp + amp*2*rnd)*perc;
-            // arr[i] = this.pv[i] + addedAmp + amp1*perc + amp2*(1-perc);
-          }
-
-          return arr;
-        }
-
-        return this.pv + addedAmps[0] + (-amp + amp * 2 * BMMath.random()) * perc;
-      }.bind(this);
-
-      if (thisProperty.loopIn) {
-        loopIn = thisProperty.loopIn.bind(thisProperty);
-        loop_in = loopIn;
-      }
-
-      if (thisProperty.loopOut) {
-        loopOut = thisProperty.loopOut.bind(thisProperty);
-        loop_out = loopOut;
-      }
-
-      if (thisProperty.smooth) {
-        smooth = thisProperty.smooth.bind(thisProperty);
-      }
-
-      function loopInDuration(type, duration) {
-        return loopIn(type, duration, true);
-      }
-
-      function loopOutDuration(type, duration) {
-        return loopOut(type, duration, true);
-      }
-
-      if (this.getValueAtTime) {
-        valueAtTime = this.getValueAtTime.bind(this);
-      }
-
-      if (this.getVelocityAtTime) {
-        velocityAtTime = this.getVelocityAtTime.bind(this);
-      }
-
-      var comp = elem.comp.globalData.projectInterface.bind(elem.comp.globalData.projectInterface);
-
-      function lookAt(elem1, elem2) {
-        var fVec = [elem2[0] - elem1[0], elem2[1] - elem1[1], elem2[2] - elem1[2]];
-        var pitch = Math.atan2(fVec[0], Math.sqrt(fVec[1] * fVec[1] + fVec[2] * fVec[2])) / degToRads;
-        var yaw = -Math.atan2(fVec[1], fVec[2]) / degToRads;
-        return [yaw, pitch, 0];
-      }
-
-      function easeOut(t, tMin, tMax, val1, val2) {
-        return applyEase(easeOutBez, t, tMin, tMax, val1, val2);
-      }
-
-      function easeIn(t, tMin, tMax, val1, val2) {
-        return applyEase(easeInBez, t, tMin, tMax, val1, val2);
-      }
-
-      function ease(t, tMin, tMax, val1, val2) {
-        return applyEase(easeInOutBez, t, tMin, tMax, val1, val2);
-      }
-
-      function applyEase(fn, t, tMin, tMax, val1, val2) {
-        if (val1 === undefined) {
-          val1 = tMin;
-          val2 = tMax;
-        } else {
-          t = (t - tMin) / (tMax - tMin);
-        }
-
-        if (t > 1) {
-          t = 1;
-        } else if (t < 0) {
-          t = 0;
-        }
-
-        var mult = fn(t);
-
-        if ($bm_isInstanceOfArray(val1)) {
-          var iKey;
-          var lenKey = val1.length;
-          var arr = createTypedArray('float32', lenKey);
-
-          for (iKey = 0; iKey < lenKey; iKey += 1) {
-            arr[iKey] = (val2[iKey] - val1[iKey]) * mult + val1[iKey];
-          }
-
-          return arr;
-        }
-
-        return (val2 - val1) * mult + val1;
-      }
-
-      function nearestKey(time) {
-        var iKey;
-        var lenKey = data.k.length;
-        var index;
-        var keyTime;
-
-        if (!data.k.length || typeof data.k[0] === 'number') {
-          index = 0;
-          keyTime = 0;
-        } else {
-          index = -1;
-          time *= elem.comp.globalData.frameRate;
-
-          if (time < data.k[0].t) {
-            index = 1;
-            keyTime = data.k[0].t;
-          } else {
-            for (iKey = 0; iKey < lenKey - 1; iKey += 1) {
-              if (time === data.k[iKey].t) {
-                index = iKey + 1;
-                keyTime = data.k[iKey].t;
-                break;
-              } else if (time > data.k[iKey].t && time < data.k[iKey + 1].t) {
-                if (time - data.k[iKey].t > data.k[iKey + 1].t - time) {
-                  index = iKey + 2;
-                  keyTime = data.k[iKey + 1].t;
-                } else {
-                  index = iKey + 1;
-                  keyTime = data.k[iKey].t;
-                }
-
-                break;
-              }
-            }
-
-            if (index === -1) {
-              index = iKey + 1;
-              keyTime = data.k[iKey].t;
-            }
-          }
-        }
-
-        var obKey = {};
-        obKey.index = index;
-        obKey.time = keyTime / elem.comp.globalData.frameRate;
-        return obKey;
-      }
-
-      function key(ind) {
-        var obKey;
-        var iKey;
-        var lenKey;
-
-        if (!data.k.length || typeof data.k[0] === 'number') {
-          throw new Error('The property has no keyframe at index ' + ind);
-        }
-
-        ind -= 1;
-        obKey = {
-          time: data.k[ind].t / elem.comp.globalData.frameRate,
-          value: []
-        };
-        var arr = Object.prototype.hasOwnProperty.call(data.k[ind], 's') ? data.k[ind].s : data.k[ind - 1].e;
-        lenKey = arr.length;
-
-        for (iKey = 0; iKey < lenKey; iKey += 1) {
-          obKey[iKey] = arr[iKey];
-          obKey.value[iKey] = arr[iKey];
-        }
-
-        return obKey;
-      }
-
-      function framesToTime(fr, fps) {
-        if (!fps) {
-          fps = elem.comp.globalData.frameRate;
-        }
-
-        return fr / fps;
-      }
-
-      function timeToFrames(t, fps) {
-        if (!t && t !== 0) {
-          t = time;
-        }
-
-        if (!fps) {
-          fps = elem.comp.globalData.frameRate;
-        }
-
-        return t * fps;
-      }
-
-      function seedRandom(seed) {
-        BMMath.seedrandom(randSeed + seed);
-      }
-
-      function sourceRectAtTime() {
-        return elem.sourceRectAtTime();
-      }
-
-      function substring(init, end) {
-        if (typeof value === 'string') {
-          if (end === undefined) {
-            return value.substring(init);
-          }
-
-          return value.substring(init, end);
-        }
-
-        return '';
-      }
-
-      function substr(init, end) {
-        if (typeof value === 'string') {
-          if (end === undefined) {
-            return value.substr(init);
-          }
-
-          return value.substr(init, end);
-        }
-
-        return '';
-      }
-
-      function posterizeTime(framesPerSecond) {
-        time = framesPerSecond === 0 ? 0 : Math.floor(time * framesPerSecond) / framesPerSecond;
-        value = valueAtTime(time);
-      }
-
-      var time;
-      var velocity;
-      var value;
-      var text;
-      var textIndex;
-      var textTotal;
-      var selectorValue;
-      var index = elem.data.ind;
-      var hasParent = !!(elem.hierarchy && elem.hierarchy.length);
-      var parent;
-      var randSeed = Math.floor(Math.random() * 1000000);
-      var globalData = elem.globalData;
-
-      function executeExpression(_value) {
-        // globalData.pushExpression();
-        value = _value;
-
-        if (this.frameExpressionId === elem.globalData.frameId && this.propType !== 'textSelector') {
-          return value;
-        }
-
-        if (this.propType === 'textSelector') {
-          textIndex = this.textIndex;
-          textTotal = this.textTotal;
-          selectorValue = this.selectorValue;
-        }
-
-        if (!thisLayer) {
-          text = elem.layerInterface.text;
-          thisLayer = elem.layerInterface;
-          thisComp = elem.comp.compInterface;
-          toWorld = thisLayer.toWorld.bind(thisLayer);
-          fromWorld = thisLayer.fromWorld.bind(thisLayer);
-          fromComp = thisLayer.fromComp.bind(thisLayer);
-          toComp = thisLayer.toComp.bind(thisLayer);
-          mask = thisLayer.mask ? thisLayer.mask.bind(thisLayer) : null;
-          fromCompToSurface = fromComp;
-        }
-
-        if (!transform) {
-          transform = elem.layerInterface('ADBE Transform Group');
-          $bm_transform = transform;
-
-          if (transform) {
-            anchorPoint = transform.anchorPoint;
-            /* position = transform.position;
-                      rotation = transform.rotation;
-                      scale = transform.scale; */
-          }
-        }
-
-        if (elemType === 4 && !content) {
-          content = thisLayer('ADBE Root Vectors Group');
-        }
-
-        if (!effect) {
-          effect = thisLayer(4);
-        }
-
-        hasParent = !!(elem.hierarchy && elem.hierarchy.length);
-
-        if (hasParent && !parent) {
-          parent = elem.hierarchy[0].layerInterface;
-        }
-
-        time = this.comp.renderedFrame / this.comp.globalData.frameRate;
-
-        if (_needsRandom) {
-          seedRandom(randSeed + time);
-        }
-
-        if (needsVelocity) {
-          velocity = velocityAtTime(time);
-        }
-
-        expression_function();
-        this.frameExpressionId = elem.globalData.frameId; // TODO: Check if it's possible to return on ShapeInterface the .v value
-        // Changed this to a ternary operation because Rollup failed compiling it correctly
-
-        scoped_bm_rt = scoped_bm_rt.propType === propTypes.SHAPE ? scoped_bm_rt.v : scoped_bm_rt;
-        return scoped_bm_rt;
-      } // Bundlers will see these as dead code and unless we reference them
-
-
-      executeExpression.__preventDeadCodeRemoval = [$bm_transform, anchorPoint, time, velocity, inPoint, outPoint, width, height, name, loop_in, loop_out, smooth, toComp, fromCompToSurface, toWorld, fromWorld, mask, position, rotation, scale, thisComp, numKeys, active, wiggle, loopInDuration, loopOutDuration, comp, lookAt, easeOut, easeIn, ease, nearestKey, key, text, textIndex, textTotal, selectorValue, framesToTime, timeToFrames, sourceRectAtTime, substring, substr, posterizeTime, index, globalData];
-      return executeExpression;
-    }
-
-    ob.initiateExpression = initiateExpression;
-    ob.__preventDeadCodeRemoval = [window, document, XMLHttpRequest, fetch, frames, $bm_neg, add, $bm_sum, $bm_sub, $bm_mul, $bm_div, $bm_mod, clamp, radians_to_degrees, degreesToRadians, degrees_to_radians, normalize, rgbToHsl, hslToRgb, linear, random, createPath];
-    return ob;
-  }();
 
   var expressionHelpers = function () {
     function searchExpressions(elem, data, prop) {
@@ -19626,6 +20072,58 @@
     }
   };
 
+  function TransformEffect() {}
+
+  TransformEffect.prototype.init = function (effectsManager) {
+    this.effectsManager = effectsManager;
+    this.type = effectTypes.TRANSFORM_EFFECT;
+    this.matrix = new Matrix();
+    this.opacity = -1;
+    this._mdf = false;
+    this._opMdf = false;
+  };
+
+  TransformEffect.prototype.renderFrame = function (forceFrame) {
+    this._opMdf = false;
+    this._mdf = false;
+
+    if (forceFrame || this.effectsManager._mdf) {
+      var effectElements = this.effectsManager.effectElements;
+      var anchor = effectElements[0].p.v;
+      var position = effectElements[1].p.v;
+      var isUniformScale = effectElements[2].p.v === 1;
+      var scaleHeight = effectElements[3].p.v;
+      var scaleWidth = isUniformScale ? scaleHeight : effectElements[4].p.v;
+      var skew = effectElements[5].p.v;
+      var skewAxis = effectElements[6].p.v;
+      var rotation = effectElements[7].p.v;
+      this.matrix.reset();
+      this.matrix.translate(-anchor[0], -anchor[1], anchor[2]);
+      this.matrix.scale(scaleWidth * 0.01, scaleHeight * 0.01, 1);
+      this.matrix.rotate(-rotation * degToRads);
+      this.matrix.skewFromAxis(-skew * degToRads, (skewAxis + 90) * degToRads);
+      this.matrix.translate(position[0], position[1], 0);
+      this._mdf = true;
+
+      if (this.opacity !== effectElements[8].p.v) {
+        this.opacity = effectElements[8].p.v;
+        this._opMdf = true;
+      }
+    }
+  };
+
+  function SVGTransformEffect(_, filterManager) {
+    this.init(filterManager);
+  }
+
+  extendPrototype([TransformEffect], SVGTransformEffect);
+
+  function CVTransformEffect(effectsManager) {
+    this.init(effectsManager);
+  }
+
+  extendPrototype([TransformEffect], CVTransformEffect);
+
   registerRenderer('canvas', CanvasRenderer);
   registerRenderer('html', HybridRenderer);
   registerRenderer('svg', SVGRenderer); // Registering shape modifiers
@@ -19642,14 +20140,16 @@
   initialize$1();
   initialize(); // Registering svg effects
 
-  registerEffect(20, SVGTintFilter, true);
-  registerEffect(21, SVGFillFilter, true);
-  registerEffect(22, SVGStrokeEffect, false);
-  registerEffect(23, SVGTritoneFilter, true);
-  registerEffect(24, SVGProLevelsFilter, true);
-  registerEffect(25, SVGDropShadowEffect, true);
-  registerEffect(28, SVGMatte3Effect, false);
-  registerEffect(29, SVGGaussianBlurEffect, true);
+  registerEffect$1(20, SVGTintFilter, true);
+  registerEffect$1(21, SVGFillFilter, true);
+  registerEffect$1(22, SVGStrokeEffect, false);
+  registerEffect$1(23, SVGTritoneFilter, true);
+  registerEffect$1(24, SVGProLevelsFilter, true);
+  registerEffect$1(25, SVGDropShadowEffect, true);
+  registerEffect$1(28, SVGMatte3Effect, false);
+  registerEffect$1(29, SVGGaussianBlurEffect, true);
+  registerEffect$1(35, SVGTransformEffect, false);
+  registerEffect(35, CVTransformEffect);
 
   return lottie;
 
