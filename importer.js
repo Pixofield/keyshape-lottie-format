@@ -181,27 +181,29 @@ function readProperty(obj, multiplier)
     });
 }
 
-function copyProperty(obj, element, targetProperty, multiplier)
+function copyProperty(obj, element, targetProperty, processor)
 {
+    if (!processor) processor = function(val) { return val; };
     if (obj.a != 1 && !Array.isArray(obj.k)) {
-        element.setProperty(targetProperty, obj.k*multiplier);
+        element.setProperty(targetProperty, processor(obj.k));
     } else {
         let kfs = new Map();
         for (let i = 0; i < obj.k.length; ++i) {
             let kf = parseKeyframe(obj, i);
             if (kf) {
-                kfs.set(kf.time, { v: kf.value[0]*multiplier, e: kf.easing });
+                kfs.set(kf.time, { v: processor(kf.value[0]), e: kf.easing });
             }
         }
         copyKfs(kfs, element, targetProperty);
     }
 }
 
-function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, additionY)
+function copyPropertyXY(obj, element, targetPropertyX, targetPropertyY, processor)
 {
+    if (!processor) processor = function(val) { return val; };
     if (obj.a != 1 && isUndefined(obj.k[0].t)) {
-        element.setProperty(targetProperty+"X", obj.k[0]*multiplier + additionX);
-        element.setProperty(targetProperty+"Y", obj.k[1]*multiplier + additionY);
+        element.setProperty(targetPropertyX, processor(obj.k[0], "x"));
+        element.setProperty(targetPropertyY, processor(obj.k[1], "y"));
     } else {
         let kfsx = new Map();
         let kfsy = new Map();
@@ -220,18 +222,18 @@ function copyPropertyXY(obj, element, targetProperty, multiplier, additionX, add
                 let nextk = i < obj.k.length-1 ? obj.k[i+1] : false;
                 let easeX = convertEasing(k, nextk, 0);
                 let easeY = convertEasing(k, nextk, 1);
-                kfsx.set(startTime, { v: valueX*multiplier + additionX, e: easeX });
-                kfsy.set(startTime, { v: valueY*multiplier + additionY, e: easeY });
+                kfsx.set(startTime, { v: processor(valueX, "x"), e: easeX });
+                kfsy.set(startTime, { v: processor(valueY, "y"), e: easeY });
                 if (easeX != easeY) {
                     sameEase = false;
                 }
             }
         }
         if (!sameEase) {
-            element.timeline().setSeparated(targetProperty+"X", true);
+            element.timeline().setSeparated(targetPropertyX, true);
         }
-        copyKfs(kfsx, element, targetProperty+"X");
-        copyKfs(kfsy, element, targetProperty+"Y");
+        copyKfs(kfsx, element, targetPropertyX);
+        copyKfs(kfsy, element, targetPropertyY);
     }
 }
 
@@ -314,23 +316,23 @@ function copyTransform(obj, element, readMotionPath = true)
     if (obj.p) {
         if (obj.p.s) { // separated position
             element.timeline().setSeparated("ks:positionX", true);
-            copyProperty(obj.p.x, element, "ks:positionX", 1);
-            copyProperty(obj.p.y, element, "ks:positionY", 1);
+            copyProperty(obj.p.x, element, "ks:positionX");
+            copyProperty(obj.p.y, element, "ks:positionY");
         } else {
             if (readMotionPath) {
                 copyMotionPath(obj.p, element);
             } else {
-                copyPropertyXY(obj.p, element, "ks:position", 1, 0, 0);
+                copyPropertyXY(obj.p, element, "ks:positionX", "ks:positionY");
             }
         }
     }
     if (obj.s) {
-        copyPropertyXY(obj.s, element, "ks:scale", 0.01, 0, 0);
+        copyPropertyXY(obj.s, element, "ks:scaleX", "ks:scaleY", function(val) { return val/100; });
     }
     if (obj.r) {
-        copyProperty(obj.r, element, "ks:rotation", 1);
+        copyProperty(obj.r, element, "ks:rotation");
     } else if (obj.rz) { // TODO: this should maybe check that ddd==1
-        copyProperty(obj.rz, element, "ks:rotation", 1);
+        copyProperty(obj.rz, element, "ks:rotation");
     }
 
     if (obj.sk) {
@@ -343,10 +345,10 @@ function copyTransform(obj, element, readMotionPath = true)
                 mult = 1;
             }
         }
-        copyProperty(obj.sk, element, prop, mult);
+        copyProperty(obj.sk, element, prop, function(val) { return val*mult; });
     }
     if (obj.a) {
-        copyPropertyXY(obj.a, element, "ks:anchor", -1, 0, 0);
+        copyPropertyXY(obj.a, element, "ks:anchorX", "ks:anchorY", function(val) { return val*-1; });
     }
 }
 
@@ -354,7 +356,7 @@ function copyOpacity(obj, element)
 {
     if (!obj) { return; }
     if (obj.o) {
-        copyProperty(obj.o, element, "opacity", 0.01);
+        copyProperty(obj.o, element, "opacity", function(val) { return val/100; });
     }
 }
 
@@ -460,7 +462,7 @@ function copyFill(obj, element)
         copyGradient(obj, element, "fill");
     }
     if (obj.o) {
-        copyProperty(obj.o, element, "fill-opacity", 0.01);
+        copyProperty(obj.o, element, "fill-opacity", function(val) { return val/100; });
     }
     if (obj.r) {
         if (obj.r == 2) {
@@ -527,7 +529,7 @@ function copyDash(dashArray, element)
     }
     for (let obj of dashArray) {
         if (obj.n == "o") {
-            copyProperty(obj.v, element, "stroke-dashoffset", 1);
+            copyProperty(obj.v, element, "stroke-dashoffset");
             break;
         }
     }
@@ -551,10 +553,10 @@ function copyStroke(obj, element)
         copyGradient(obj, element, "stroke");
     }
     if (obj.o) {
-        copyProperty(obj.o, element, "stroke-opacity", 0.01);
+        copyProperty(obj.o, element, "stroke-opacity", function(val) { return val/100; });
     }
     if (obj.w) {
-        copyProperty(obj.w, element, "stroke-width", 1);
+        copyProperty(obj.w, element, "stroke-width");
     }
     if (obj.ml) {
         element.setProperty("stroke-miterlimit", obj.ml);
@@ -873,6 +875,10 @@ function readShapes(shapes, parentElement, hasDashStroke)
             containsGroupsOrAnimations = true;
             break;
         }
+        if (shape.ty == "el" && shape.s && shape.s.a == 1) {
+            containsGroupsOrAnimations = true;
+            break;
+        }
     }
     if (shapes.length > 1 && !containsGroupsOrAnimations) {
         createCombinedPathElement(shapes, parentElement);
@@ -904,13 +910,17 @@ function readShapes(shapes, parentElement, hasDashStroke)
                     rect.setProperty("height", h);
                 }
                 if (shape.p) {
-                    copyPropertyXY(shape.p, rect, "ks:position", 1, -w/2, -h/2);
+                    copyPropertyXY(shape.p, rect, "ks:positionX", "ks:positionY", function(val, d) {
+                        if (d == "x") return val-w/2;
+                        else return val-h/2;
+                    });
                 }
                 if (shape.r) {
-                    let rad = animatedToValue(shape.r);
-                    if (rad > w/2) { rad = w/2; }
-                    if (rad > h/2) { rad = h/2; }
-                    rect.setProperty("rx", rad);
+                    copyProperty(shape.r, rect, "rx", function(val) {
+                        if (val > w/2) { return w/2; }
+                        if (val > h/2) { return h/2; }
+                        return val;
+                    });
                 }
             } else {
                 let rect = app.activeDocument.createElement("path");
@@ -918,7 +928,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 parentElement.insertAt(0, rect);
                 copyName(shape, rect);
                 if (shape.p) {
-                    copyPropertyXY(shape.p, rect, "ks:position", 1, 0, 0);
+                    copyPropertyXY(shape.p, rect, "ks:positionX", "ks:positionY");
                 }
                 rect.setProperty("d", createRect(shape, 0, 0));
             }
@@ -930,12 +940,12 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 parentElement.insertAt(0, ellipse);
                 copyName(shape, ellipse);
                 if (shape.p) {
-                    copyPropertyXY(shape.p, ellipse, "ks:position", 1, 0, 0);
+                    copyPropertyXY(shape.p, ellipse, "ks:positionX", "ks:positionY");
                 }
                 if (shape.s) {
-                    let s = multiDimAnimatedToValue(shape.s);
-                    ellipse.setProperty("rx", s[0]/2);
-                    ellipse.setProperty("ry", s[1]/2);
+                    copyPropertyXY(shape.s, ellipse, "rx", "ry", function(val) {
+                        return val/2;
+                    });
                 }
             } else {
                 let ellipse = app.activeDocument.createElement("path");
@@ -943,7 +953,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 parentElement.insertAt(0, ellipse);
                 copyName(shape, ellipse);
                 if (shape.p) {
-                    copyPropertyXY(shape.p, ellipse, "ks:position", 1, 0, 0);
+                    copyPropertyXY(shape.p, ellipse, "ks:positionX", "ks:positionY");
                 }
                 ellipse.setProperty("d", createEllipse(shape));
             }
@@ -954,9 +964,9 @@ function readShapes(shapes, parentElement, hasDashStroke)
             parentElement.insertAt(0, star);
             copyName(shape, star);
             if (shape.p) {
-                copyPropertyXY(shape.p, star, "ks:position", 1, 0, 0);
+                copyPropertyXY(shape.p, star, "ks:positionX", "ks:positionY");
             }
-            copyProperty(shape.r, star, "ks:rotation", 1);
+            copyProperty(shape.r, star, "ks:rotation");
             if (shape.sy == 2) {
                 star.setProperty("d", createPolygon(shape, 0, 0, 0));
             } else {

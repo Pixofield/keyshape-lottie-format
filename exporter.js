@@ -148,7 +148,7 @@ function valueOrAnimation(element, prop, defaultValue, processor)
 
 function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, processor)
 {
-    if (element.timeline().isSeparated(propX) || propX == "width") {
+    if (element.timeline().isSeparated(propX) || propX == "width" || propX == "rx") {
         addMissingKeyframes(element, propX, propY);
         addMissingKeyframes(element, propY, propX);
     }
@@ -790,8 +790,7 @@ function addShape(shapesArray, element, topLevel)
         // rect size is relative to center, so move position
         rectshape.p = valueOrAnimationMultiDim(element, 2, "width", "height", 0,
                                                function(val) { return toPx(val)/2; });
-        let r = toPx(element.getProperty("rx"));
-        rectshape.r = { a:0, k: round(r) };
+        rectshape.r = valueOrAnimation(element, "rx", 0, function(val) { return toPx(val); });
 
         shape.it.push(rectshape);
         pushStrokeAndFill(shape.it, element);
@@ -806,9 +805,8 @@ function addShape(shapesArray, element, topLevel)
         ellipseshape.ty = "el";
         let x = 0;
         let y = 0;
-        let width = toPx(element.getProperty("rx"))*2;
-        let height = toPx(element.getProperty("ry"))*2;
-        ellipseshape.s = { a:0, k: [ round(width), round(height) ] };
+        ellipseshape.s = valueOrAnimationMultiDim(element, 2, "rx", "ry", 0,
+                                                  function(val) { return toPx(val)*2; });
         ellipseshape.p = { a:0, k: [ round(x), round(y) ] };
 
         shape.it.push(ellipseshape);
