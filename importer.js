@@ -580,6 +580,7 @@ function copyStroke(obj, element)
 // returns a single value
 function animatedToValue(value)
 {
+    if (!value) { return 0; }
     return value.a == 1 || Array.isArray(value.k) ? value.k[0].s[0] : value.k;
 }
 
