@@ -162,8 +162,8 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
         let valy = element.getProperty(propY) ?? defaultValue;
         if (processor) { valx = processor(valx); }
         if (processor) { valy = processor(valy); }
-        return { a: 0, k: dim == 3 ? [ round(valx), round(valy), defaultValue ]
-                                   : [ round(valx), round(valy) ] };
+        return { a: 0, k: dim === 3 ? [ round(valx), round(valy), defaultValue ]
+                                    : [ round(valx), round(valy) ] };
     }
     // animation
     let obj = { a: 1, k: [] };
@@ -524,11 +524,11 @@ function moveAlphaToOpacity(element, prop, kscolor)
         let opacityKfs = [];
         for (let i = 0; i < kfs.length; ++i) {
             let kf = kfs[i];
-            let kscolor = app.activeDocument.parseColor(kf.value);
-            let alpha = kscolor.type === "color" ? kscolor.alpha : 1;
-            if (alpha < 1 && kscolor.type === "color") {
+            let kfkscolor = app.activeDocument.parseColor(kf.value);
+            let alpha = kfkscolor.type === "color" ? kfkscolor.alpha : 1;
+            if (alpha < 1 && kfkscolor.type === "color") {
                 needsAlpha = true;
-                element.timeline().setKeyframe(prop, kf.time, colorToCss(kscolor), kf.easing);
+                element.timeline().setKeyframe(prop, kf.time, colorToCss(kfkscolor), kf.easing);
             }
             opacityKfs.push({ time: kf.time, value: alpha, easing: kf.easing });
         }
