@@ -187,7 +187,7 @@ function readProperty(obj, multiplier)
             kfs.set(kf.time, { v: kf.value[0]*multiplier, e: kf.easing });
         }
     }
-    if (kfs.size == 0) { // couldn't get any keyframes (negative times?) -> return the first one
+    if (kfs.size === 0) { // couldn't get any keyframes (negative times?) -> return the first one
         let val = obj.k[0]?.s[0];
         if (isUndefined(val)) {
             return 0;
@@ -243,7 +243,7 @@ function copyPropertyXY(obj, element, targetPropertyX, targetPropertyY, processo
                 let easeY = convertEasing(k, nextk, 1);
                 kfsx.set(startTime, { v: processor(valueX, "x"), e: easeX });
                 kfsy.set(startTime, { v: processor(valueY, "y"), e: easeY });
-                if (easeX != easeY) {
+                if (easeX !== easeY) {
                     sameEase = false;
                 }
             }
@@ -358,8 +358,8 @@ function copyTransform(obj, element, readMotionPath = true)
         let prop = "ks:skewX";
         let mult = -1;
         if (obj.sa) {
-            let sa = animatedToValue(obj.sa);
-            if (sa == 90 || sa == 270) {
+            let sa = +animatedToValue(obj.sa);
+            if (sa === 90 || sa === 270) {
                 prop = "ks:skewY";
                 mult = 1;
             }
@@ -386,20 +386,20 @@ function hex(val)
 
 function hexColor(r, g, b)
 {
-    let mult = globalVersion != "4.0.0" ? 255 : 1; // old versions have color range [0, 255]
+    let mult = globalVersion !== "4.0.0" ? 255 : 1; // old versions have color range [0, 255]
     return "#" + hex(Math.round(r*mult)) + hex(Math.round(g*mult)) + hex(Math.round(b*mult));
 }
 
 function colorToCss(r, g, b, a)
 {
-    r = r ?? 0;
-    g = g ?? 0;
-    b = b ?? 0;
-    a = a ?? 1;
-    if (a == 1) {
+    r = +r ?? 0;
+    g = +g ?? 0;
+    b = +b ?? 0;
+    a = +a ?? 1;
+    if (a === 1) {
         return hexColor(r, g, b);
     }
-    let mult = globalVersion != "4.0.0" ? 255 : 1; // old versions have color range [0, 255]
+    let mult = globalVersion !== "4.0.0" ? 255 : 1; // old versions have color range [0, 255]
     return "rgba(" + Math.round(r*mult) + "," +
                      Math.round(g*mult) + "," +
                      Math.round(b*mult) + "," + a + ")";
@@ -448,7 +448,7 @@ function copyGradient(obj, element, prop)
     let start = validateArray(obj.s?.a != 1 ? obj.s?.k : obj.s?.k?.at(0)?.s, [0, 0]);
     let end = validateArray(obj.e?.a != 1 ? obj.e?.k : obj.e?.k?.at(0)?.s, [100, 100]);
     let grad;
-    if (obj.t == 2) {
+    if (+obj.t === 2) {
         let rad = len(start, end);
         grad = "-ks-radial-gradient("+rad+" "+start[0]+" "+start[1]+" "+start[0]+" "+start[1];
     } else {
@@ -474,13 +474,13 @@ function copyGradient(obj, element, prop)
 function copyFill(obj, element)
 {
     if (!obj || !obj.o) { return; }
-    if (element.tagName != "rect" && element.tagName != "ellipse" && element.tagName != "path") {
+    if (element.tagName !== "rect" && element.tagName !== "ellipse" && element.tagName !== "path") {
         return;
     }
-    if (element.getProperty("fill") != "none") {
+    if (element.getProperty("fill") !== "none") {
         return;
     }
-    if (obj.ty == "fl") {
+    if (obj.ty === "fl") {
         copyColor(obj, element, "fill");
     } else {
         copyGradient(obj, element, "fill");
@@ -489,7 +489,7 @@ function copyFill(obj, element)
         copyProperty(obj.o, element, "fill-opacity", function(val) { return val/100; });
     }
     if (obj.r) {
-        if (obj.r == 2) {
+        if (+obj.r === 2) {
             element.setProperty("fill-rule", "evenodd");
         } else {
             element.setProperty("fill-rule", "nonzero");
@@ -499,9 +499,9 @@ function copyFill(obj, element)
 
 function appendDashValue(kfs, dash)
 {
-    if (kfs.size == 0) {
+    if (kfs.size === 0) {
         kfs.set(0, { v: dash });
-    } else if (kfs.size == 1) {
+    } else if (kfs.size === 1) {
         kfs.set(kfs.keys().next().value, { v: kfs.values().next().value.v + " " + dash });
     } else {
         for (let key of kfs.keys()) {
@@ -538,21 +538,21 @@ function copyDash(dashArray, element)
                     dkfs.set(kf.time, { v: kf.value[0], e: kf.easing });
                 }
             }
-            if (kfs.size == 0) {
+            if (kfs.size === 0) {
                 kfs = dkfs;
             } else {
                 combineDashKfs(kfs, dkfs);
             }
         }
     }
-    if (kfs.size == 1) {
+    if (kfs.size === 1) {
         element.setProperty("stroke-dasharray", kfs.values().next().value.v);
     } else if (kfs.size > 1) {
         let sorted = new Map([...kfs.entries()].sort());
         copyKfs(sorted, element, "stroke-dasharray");
     }
     for (let obj of dashArray) {
-        if (obj.n == "o") {
+        if (obj.n === "o") {
             copyProperty(obj.v, element, "stroke-dashoffset");
             break;
         }
@@ -565,13 +565,13 @@ const linejoins = [ "miter", "round", "bevel" ];
 function copyStroke(obj, element)
 {
     if (!obj || !obj.o) { return; }
-    if (element.tagName != "rect" && element.tagName != "ellipse" && element.tagName != "path") {
+    if (element.tagName !== "rect" && element.tagName !== "ellipse" && element.tagName !== "path") {
         return;
     }
-    if (element.getProperty("stroke") != "none") {
+    if (element.getProperty("stroke") !== "none") {
         return;
     }
-    if (obj.ty == "st") {
+    if (obj.ty === "st") {
         copyColor(obj, element, "stroke");
     } else {
         copyGradient(obj, element, "stroke");
@@ -613,9 +613,9 @@ function createRect(shape, posx, posy)
 {
     var p = multiDimAnimatedToValue(shape.p);
     var s = multiDimAnimatedToValue(shape.s);
-    let rad = animatedToValue(shape.r);
+    let rad = +animatedToValue(shape.r);
     var midx = p[0], midy = p[1], sw = s[0]/2, sh = s[1]/2;
-    if (rad == 0) {
+    if (rad === 0) {
         let l = -sw + posx, t = -sh + posy, r = sw + posx, b = sh + posy;
         if (shape.d !== 3) {
             return "M" + r + "," + t +
@@ -747,16 +747,16 @@ function createStar(shape, posx, posy, rot)
 function copyPathTrimToDashArray(trimObj, element)
 {
     if (!trimObj) { return; }
-    if (element.tagName != "rect" && element.tagName != "ellipse" && element.tagName != "path") {
+    if (element.tagName !== "rect" && element.tagName !== "ellipse" && element.tagName !== "path") {
         return;
     }
     let stroke = element.getProperty("stroke");
-    if (stroke == "" || stroke == "none") {
+    if (stroke === "" || stroke === "none") {
         return;
     }
     // don't override dash if it exists
     let da = element.getProperty("stroke-dasharray").trim();
-    if (da != "" && da != "none") {
+    if (da !== "" && da !== "none") {
         return;
     }
     let pathLen = new KSPathData(element.getProperty("d")).getTotalLength();
@@ -772,9 +772,9 @@ function copyPathTrimToDashArray(trimObj, element)
     if (trimObj.o) {
         offset = readProperty(trimObj.o, 0.01);
     }
-    let staticStart = Array.isArray(start) ? start[0].value : start;
-    let staticEnd = Array.isArray(end) ? end[0].value : end;
-    let staticOffset = Array.isArray(offset) ? offset[0].value : offset;
+    let staticStart = Array.isArray(start) ? +start[0].value : +start;
+    let staticEnd = Array.isArray(end) ? +end[0].value : +end;
+    let staticOffset = Array.isArray(offset) ? +offset[0].value : +offset;
     element.timeline().removeAllKeyframes("stroke-dasharray");
     element.timeline().removeAllKeyframes("stroke-dashoffset");
 
@@ -810,7 +810,7 @@ function copyPathTrimToDashArray(trimObj, element)
     } else { // no animations
         element.setProperty("stroke-dashoffset", -(offset+staticStart)*pathLen);
         // set dash array
-        if (staticStart != 0 || staticEnd != 1) {
+        if (staticStart !== 0 || staticEnd !== 1) {
             let da = Math.ceil((staticEnd - staticStart) * pathLen * 100) / 100; // round to 2 decimals
             element.setProperty("stroke-dasharray", da + " " + (pathLen-da));
         }
@@ -868,19 +868,19 @@ function createCombinedPathElement(shapes, parentElement)
     copyNameAndHd(shapes[0], path);
     let pathData = "";
     for (let shape of shapes) {
-        if (shape.ty == "sh") {
+        if (shape.ty === "sh") {
             if (shape.ks) {
                 pathData += parsePathData(shape.ks.k, shape.closed);
             }
-        } else if (shape.ty == "rc") {
+        } else if (shape.ty === "rc") {
             let pos = multiDimAnimatedToValue(shape.p);
             pathData += createRect(shape, pos[0], pos[1]);
-        } else if (shape.ty == "el") {
+        } else if (shape.ty === "el") {
             pathData += createEllipse(shape);
-        } else if (shape.ty == "sr") {
+        } else if (shape.ty === "sr") {
             let pos = multiDimAnimatedToValue(shape.p);
             let rot = animatedToValue(shape.r);
-            if (shape.sy == 2) {
+            if (+shape.sy === 2) {
                 pathData += createPolygon(shape, pos[0], pos[1], rot);
             } else {
                 pathData += createStar(shape, pos[0], pos[1], rot);
@@ -895,12 +895,12 @@ function readShapes(shapes, parentElement, hasDashStroke)
     // create a combined path if it is possible
     let containsGroupsOrAnimations = false;
     for (let shape of shapes) {
-        if (shape.ty == "gr" || (shape.p && shape.p.a == 1) || (shape.r && shape.r.a == 1) ||
+        if (shape.ty === "gr" || (shape.p && shape.p.a == 1) || (shape.r && shape.r.a == 1) ||
                 (shape.ks && (shape.ks.a == 1 || Array.isArray(shape.ks.k)))) {
             containsGroupsOrAnimations = true;
             break;
         }
-        if (shape.ty == "el" && shape.s && shape.s.a == 1) {
+        if (shape.ty === "el" && shape.s && shape.s.a == 1) {
             containsGroupsOrAnimations = true;
             break;
         }
@@ -911,7 +911,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
     }
     // no combined path - create separate elements
     for (let shape of shapes) {
-        if (shape.ty == "sh") {
+        if (shape.ty === "sh") {
             let path = app.activeDocument.createElement("path");
             path.setProperty("fill", "none");
             parentElement.insertAt(0, path);
@@ -920,7 +920,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 copyPathData(shape.ks, path, shape.d, shape.closed);
             }
 
-        } else if (shape.ty == "rc") {
+        } else if (shape.ty === "rc") {
             if (!hasDashStroke) {
                 let rect = app.activeDocument.createElement("rect");
                 rect.setProperty("fill", "none");
@@ -936,7 +936,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 }
                 if (shape.p) {
                     copyPropertyXY(shape.p, rect, "ks:positionX", "ks:positionY", function(val, d) {
-                        if (d == "x") return val-w/2;
+                        if (d === "x") return val-w/2;
                         else return val-h/2;
                     });
                 }
@@ -958,7 +958,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 rect.setProperty("d", createRect(shape, 0, 0));
             }
 
-        } else if (shape.ty == "el") {
+        } else if (shape.ty === "el") {
             if (!hasDashStroke) {
                 let ellipse = app.activeDocument.createElement("ellipse");
                 ellipse.setProperty("fill", "none");
@@ -983,7 +983,7 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 ellipse.setProperty("d", createEllipse(shape));
             }
 
-        } else if (shape.ty == "sr") {
+        } else if (shape.ty === "sr") {
             let star = app.activeDocument.createElement("path");
             star.setProperty("fill", "none");
             parentElement.insertAt(0, star);
@@ -992,13 +992,13 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 copyPropertyXY(shape.p, star, "ks:positionX", "ks:positionY");
             }
             copyProperty(shape.r, star, "ks:rotation");
-            if (shape.sy == 2) {
+            if (+shape.sy === 2) {
                 star.setProperty("d", createPolygon(shape, 0, 0, 0));
             } else {
                 star.setProperty("d", createStar(shape, 0, 0, 0));
             }
 
-        } else if (shape.ty == "gr") {
+        } else if (shape.ty === "gr") {
             let g = app.activeDocument.createElement("g");
             parentElement.insertAt(0, g);
             copyNameAndHd(shape, g);
@@ -1025,7 +1025,7 @@ function readLayers(parentElement, layers)
         let elem = layerToElement(layer);
         // if previous layer is a matte track, then add it as a mask
         // TODO: add support for inverted mattes
-        if (elem && layer.tt && (layer.tt == 1 || layer.tt == 3) && i > 0 && layers[i-1].td) {
+        if (elem && layer.tt && (+layer.tt === 1 || +layer.tt === 3) && i > 0 && layers[i-1].td) {
             addTrackMatteMask(elem, layer, layers[i-1]);
         }
         if (elem && !isUndefined(layer.ind)) {
@@ -1058,7 +1058,7 @@ function readLayers(parentElement, layers)
 function layerToElement(layer)
 {
     let elem;
-    if (layer.ty == 0) { // precomp
+    if (+layer.ty === 0) { // precomp
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
         copyNameAndHd(layer, elem);
@@ -1071,7 +1071,7 @@ function layerToElement(layer)
         globalTimeOffset -= layer.ip * globalFrameDur;
         applyMask(layer, elem);
 
-    } else if (layer.ty == 1) { // solid
+    } else if (+layer.ty === 1) { // solid
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
         copyNameAndHd(layer, elem);
@@ -1084,7 +1084,7 @@ function layerToElement(layer)
         elem.append(rect);
         applyMask(layer, elem);
 
-    } else if (layer.ty == 2) { // image
+    } else if (+layer.ty === 2) { // image
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
         copyNameAndHd(layer, elem);
@@ -1108,14 +1108,14 @@ function layerToElement(layer)
         }
         applyMask(layer, elem);
 
-    } else if (layer.ty == 3) { // null
+    } else if (+layer.ty === 3) { // null
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
         copyNameAndHd(layer, elem);
         copyTransform(layer.ks, elem);
         // no opacity copying, null is always parented
 
-    } else if (layer.ty == 4 && layer["shapes"]) { // shape
+    } else if (+layer.ty === 4 && layer["shapes"]) { // shape
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
         copyNameAndHd(layer, elem);
@@ -1131,7 +1131,7 @@ function layerToElement(layer)
         }
         applyMask(layer, elem);
 
-    } else if (layer.ty == 5) { // text
+    } else if (+layer.ty === 5) { // text
         elem = app.activeDocument.createElement("g");
         layer.element = elem;
         copyNameAndHd(layer, elem);
@@ -1176,7 +1176,7 @@ function layerToElement(layer)
     }
 
     if (elem) {
-        if (layer.ao == 1) {
+        if (+layer.ao === 1) {
             elem.setProperty("ks:motion-rotation", "auto");
         }
         if (layer.bm) {
@@ -1207,7 +1207,7 @@ function addTrackMatteMask(element, layer, matteLayer)
     // group matte and content so that content transform doesn't affect matte
     let gElem = app.activeDocument.createElement("g");
     let maskElem = app.activeDocument.createElement("mask");
-    if (layer.tt == 1) {
+    if (+layer.tt === 1) {
         maskElem.setProperty("mask-type", "alpha");
     }
     maskElem.append(matteElem);

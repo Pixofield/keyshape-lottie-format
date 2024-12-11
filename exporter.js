@@ -9,7 +9,7 @@ function getFilenames(userSelectedFileUrl)
     let assets = getImageAssets();
     if (assets.length > 0) {
         for (let asset of assets) {
-            if (asset.e == 1) { // skip embedded images
+            if (asset.e === 1) { // skip embedded images
                 continue;
             }
             if (fileArray.length == 1) {
@@ -52,16 +52,16 @@ function round(val)
 function convertColor(val)
 {
     let kscolor = app.activeDocument.parseColor(val);
-    if (kscolor.type == "color") {
+    if (kscolor.type === "color") {
         return [ round(kscolor.red), round(kscolor.green), round(kscolor.blue),
-                 round(kscolor.alpha || 1) ];
+                 round(kscolor.alpha ?? 1) ];
     }
     return [ 0, 0, 0, 0 ];
 }
 
 function convertEasing(easing)
 {
-    if (easing == "linear") {
+    if (easing === "linear") {
         return [ 0.167, 0.167, 0.833, 0.833 ];
     }
     if (easing.startsWith("cubic-bezier(")) {
@@ -101,7 +101,7 @@ function valueOrAnimation(element, prop, defaultValue, processor)
     element.timeline().simplifyEasings(prop);
     kfs = element.timeline().getKeyframes(prop);
     if (!kfs || kfs.length < 2) {
-        let val = element.getProperty(prop) || defaultValue;
+        let val = element.getProperty(prop) ?? defaultValue;
         if (processor) { val = processor(val); }
         return { a: 0, k: Array.isArray(val) ? val : round(val) };
     }
@@ -149,7 +149,7 @@ function valueOrAnimation(element, prop, defaultValue, processor)
 
 function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, processor)
 {
-    if (element.timeline().isSeparated(propX) || propX == "width" || propX == "rx") {
+    if (element.timeline().isSeparated(propX) || propX === "width" || propX === "rx") {
         addMissingKeyframes(element, propX, propY);
         addMissingKeyframes(element, propY, propX);
     }
@@ -158,8 +158,8 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
     let kfsx = element.timeline().getKeyframes(propX);
     let kfsy = element.timeline().getKeyframes(propY);
     if (!kfsx || kfsx.length < 2) {
-        let valx = element.getProperty(propX) || defaultValue;
-        let valy = element.getProperty(propY) || defaultValue;
+        let valx = element.getProperty(propX) ?? defaultValue;
+        let valy = element.getProperty(propY) ?? defaultValue;
         if (processor) { valx = processor(valx); }
         if (processor) { valy = processor(valy); }
         return { a: 0, k: dim == 3 ? [ round(valx), round(valy), defaultValue ]
@@ -177,7 +177,7 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
         valy = round(valy);
         let span = {
             t: toRoundFrame(kfx.time),
-            s: dim == 3 ? [ valx, valy, defaultValue ] : [ valx, valy ]
+            s: dim === 3 ? [ valx, valy, defaultValue ] : [ valx, valy ]
         };
         extraSpan = undefined;
         // TODO: support separated properties having a stepped and non-stepped easing
@@ -195,7 +195,7 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
                         val2y = round(val2y);
                         extraSpan = {
                             t: toRoundFrame(kfx.time) + 0.01,
-                            s: dim == 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ],
+                            s: dim === 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ],
                             h: 1
                         };
                     }
@@ -203,8 +203,8 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
             } else {
                 let easex = convertEasing(kfx.easing);
                 let easey = convertEasing(kfy.easing);
-                let singleEase = easex[0] == easey[0] && easex[1] == easey[1] &&
-                                 easex[2] == easey[2] && easex[3] == easey[3];
+                let singleEase = easex[0] === easey[0] && easex[1] === easey[1] &&
+                                 easex[2] === easey[2] && easex[3] === easey[3];
                 span.i = {
                     x: singleEase ? [ easex[2] ] : [ easex[2], easey[2] ],
                     y: singleEase ? [ easex[3] ] : [ easex[3], easey[3] ]
@@ -220,7 +220,7 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
                 let val2y = processor ? processor(kf2y.value) : kf2y.value;
                 val2x = round(val2x);
                 val2y = round(val2y);
-                span.e = (dim == 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ]);
+                span.e = (dim === 3 ? [ val2x, val2y, defaultValue ] : [ val2x, val2y ]);
             }
         }
         obj.k.push(span);
@@ -232,7 +232,7 @@ function valueOrAnimationMultiDim(element, dim, propX, propY, defaultValue, proc
 function controlPoints(commands, x, y, x2, y2, i)
 {
     let ix = x2, iy = y2, ox = x, oy = y;
-    if (i < commands.length-1 && commands[i+1].command == "C") {
+    if (i < commands.length-1 && commands[i+1].command === "C") {
         ox = commands[i+1].x1;
         oy = commands[i+1].y1;
         ix = commands[i+1].x2;
@@ -314,26 +314,26 @@ function valueOrMotionPath(element)
 function hasSkewY(element)
 {
     // if skewX value is found, then skewing Y isn't possible
-    let skx = element.getProperty("ks:skewX") || 0;
-    if (skx != 0) {
+    let skx = element.getProperty("ks:skewX") ?? 0;
+    if (skx !== 0) {
         return false;
     }
     // if skewX keyframe value is found, then skewing Y isn't possible
     let kfsx = element.timeline().getKeyframes("ks:skewX");
     for (let kf of kfsx) {
-        if (kf.value != 0) {
+        if (kf.value !== 0) {
             return false;
         }
     }
     // if skewY value is found, then perform skewing Y
-    let sky = element.getProperty("ks:skewY") || 0;
-    if (sky != 0) {
+    let sky = element.getProperty("ks:skewY") ?? 0;
+    if (sky !== 0) {
         return true;
     }
     // if skewY keyframe value is found, then perform skewing Y
     let kfsy = element.timeline().getKeyframes("ks:skewY");
     for (let kf of kfsy) {
-        if (kf.value != 0) {
+        if (kf.value !== 0) {
             return true;
         }
     }
@@ -389,15 +389,15 @@ function pushMask(layerArray, element, assets)
     // reverse order so that the top-most mask or clipPath is processed
     for (let i = element.children.length-1; i >= 0; --i) {
         let child = element.children[i];
-        if (child.getProperty("display") == "none") {
+        if (child.getProperty("display") === "none") {
             continue;
         }
         // convert clipPaths to single color masks
-        if (child.tagName == "clipPath") {
+        if (child.tagName === "clipPath") {
             child.setProperty("mask-type", "alpha");
             for (let clipChild of child.children) {
                 let tag = clipChild.tagName;
-                if (tag == "rect" || tag == "ellipse" || tag == "path") {
+                if (tag === "rect" || tag === "ellipse" || tag === "path") {
                     clipChild.timeline().removeAllKeyframes("opacity");
                     clipChild.timeline().removeAllKeyframes("fill");
                     clipChild.timeline().removeAllKeyframes("stroke");
@@ -412,8 +412,8 @@ function pushMask(layerArray, element, assets)
                 }
             }
         }
-        if (child.tagName == "mask" || child.tagName == "clipPath") {
-            layerArray[0].tt = child.getProperty("mask-type") == "alpha" ? 1 : 3;
+        if (child.tagName === "mask" || child.tagName === "clipPath") {
+            layerArray[0].tt = child.getProperty("mask-type") === "alpha" ? 1 : 3;
             // create track matte for mask
             appendLayer(layerArray, child, assets, element);
             layerArray[0].td = 1;
@@ -426,11 +426,11 @@ function createGradient(colordata, type)
 {
     let gobj = {
         ty: type,
-        t: colordata.type == "radial-gradient" ? 2 : 1
+        t: colordata.type === "radial-gradient" ? 2 : 1
     };
     // TODO: objectBoundingBox
     let gt = colordata.gradientTransform;
-    if (colordata.type == "linear-gradient") {
+    if (colordata.type === "linear-gradient") {
         let pt1 = new DOMPoint(colordata.x1, colordata.y1).matrixTransform(gt);
         let pt2 = new DOMPoint(colordata.x2, colordata.y2).matrixTransform(gt);
         gobj.s = {
@@ -458,7 +458,7 @@ function createGradient(colordata, type)
         gobj.a = { a: 0, k: 0 };
     }
     let colors = { a: 0, k: [] };
-    if (colordata.stops.length == 0) {
+    if (colordata.stops.length === 0) {
         colordata.stops.push({ offset: 0, red: 0, green: 0, blue: 0, alpha: 0 });
     }
     // color values for gradient stops
@@ -493,7 +493,7 @@ const linejoins = [ "miter", "round", "bevel" ];
 function parseDashArray(str)
 {
     str = str.trim();
-    if (str == "none") { return [ "0" ]; }
+    if (str === "none") { return [ "0" ]; }
     return str.replace(/,/g, ' ').split(/\s/);
 }
 
@@ -505,7 +505,7 @@ function colorToCss(color)
 // temporary fix to support color alpha by moving it to opacity, needed for Lottie-web and Android
 function moveAlphaToOpacity(element, prop, kscolor)
 {
-    if (kscolor.type != "color") {
+    if (kscolor.type !== "color") {
         return;
     }
     if (!element.timeline().hasKeyframes(prop)) {
@@ -525,8 +525,8 @@ function moveAlphaToOpacity(element, prop, kscolor)
         for (let i = 0; i < kfs.length; ++i) {
             let kf = kfs[i];
             let kscolor = app.activeDocument.parseColor(kf.value);
-            let alpha = kscolor.type == "color" ? kscolor.alpha : 1;
-            if (alpha < 1 && kscolor.type == "color") {
+            let alpha = kscolor.type === "color" ? kscolor.alpha : 1;
+            if (alpha < 1 && kscolor.type === "color") {
                 needsAlpha = true;
                 element.timeline().setKeyframe(prop, kf.time, colorToCss(kscolor), kf.easing);
             }
@@ -545,7 +545,7 @@ function moveAlphaToOpacity(element, prop, kscolor)
 function pushStrokeAndFill(shapesArray, element)
 {
     let s = app.activeDocument.parseColor(element.getProperty("stroke"));
-    if (s.type != "none" || element.timeline().hasKeyframes("stroke")) {
+    if (s.type !== "none" || element.timeline().hasKeyframes("stroke")) {
         moveAlphaToOpacity(element, "stroke", s);
         let sc = linecaps.indexOf(element.getProperty("stroke-linecap")) + 1;
         if (sc == -1) { sc = 0; }
@@ -553,7 +553,7 @@ function pushStrokeAndFill(shapesArray, element)
         if (sj == -1) { sj = 0; }
         let miter = element.getProperty("stroke-miterlimit");
         let strokeobj;
-        if (s.type == "linear-gradient" || s.type == "radial-gradient") {
+        if (s.type === "linear-gradient" || s.type === "radial-gradient") {
             strokeobj = createGradient(s, "gs");
         } else {
             strokeobj = {
@@ -569,7 +569,7 @@ function pushStrokeAndFill(shapesArray, element)
 
         // dashes
         let dash = element.getProperty("stroke-dasharray").trim();
-        if (dash != "" && dash != "none") {
+        if (dash !== "" && dash !== "none") {
             let d = [];
             for (let i = 0; i < 2; ++i) {
                 let gap = d.length & 1;
@@ -592,11 +592,11 @@ function pushStrokeAndFill(shapesArray, element)
         shapesArray.push(strokeobj);
     }
     let f = app.activeDocument.parseColor(element.getProperty("fill"));
-    if (f.type != "none" || element.timeline().hasKeyframes("fill")) {
+    if (f.type !== "none" || element.timeline().hasKeyframes("fill")) {
         moveAlphaToOpacity(element, "fill", f);
-        let fillrule = element.getProperty("fill-rule") == "evenodd" ? 2 : 1;
+        let fillrule = element.getProperty("fill-rule") === "evenodd" ? 2 : 1;
         let fillobj;
-        if (f.type == "linear-gradient" || f.type == "radial-gradient") {
+        if (f.type === "linear-gradient" || f.type === "radial-gradient") {
             fillobj = createGradient(f, "gf");
         } else {
             fillobj = {
@@ -615,17 +615,17 @@ function convertContour(commands)
 {
     let result = { i: [], o: [], v: [], c: false };
     for (let cmd of commands) {
-        if (cmd.command == "M") {
+        if (cmd.command === "M") {
             result.i.push([ 0, 0 ]);
             result.v.push([ round(cmd.x), round(cmd.y) ]);
             result.o.push([ 0, 0 ]);
 
-        } else if (cmd.command == "L") {
+        } else if (cmd.command === "L") {
             result.i.push([ 0, 0 ]);
             result.v.push([ round(cmd.x), round(cmd.y) ]);
             result.o.push([ 0, 0 ]);
 
-        } else if (cmd.command == "C") {
+        } else if (cmd.command === "C") {
             let previx = result.v.length-1;
             result.o[previx][0] = round(cmd.x1 - result.v[previx][0]);
             result.o[previx][1] = round(cmd.y1 - result.v[previx][1]);
@@ -633,7 +633,7 @@ function convertContour(commands)
             result.v.push([ round(cmd.x), round(cmd.y) ]);
             result.o.push([ 0, 0 ]);
 
-        } else if (cmd.command == "Z") {
+        } else if (cmd.command === "Z") {
             result.c = true;
         }
     }
@@ -646,7 +646,7 @@ function splitToContours(svgpath)
     let contours = [];
     let contour = [];
     for (let cmd of pathdata.commands) {
-        if (cmd.command == "M") {
+        if (cmd.command === "M") {
             if (contour.length > 0) {
                 contours.push(contour);
             }
@@ -730,7 +730,7 @@ function hasTime(kfs, time)
     // don't check last keyframe, so that easing can get copied to it
     for (let i = 0; i < kfs.length; ++i) {
         let kf = kfs[i];
-        if (kf.time == time) {
+        if (kf.time === time) {
             return true;
         }
     }
@@ -745,7 +745,7 @@ function addMissingKeyframes(element, prop, destProp)
     }
     element.timeline().simplifyEasings(prop); // temporary fix to make width/height animations work
     let kfs = element.timeline().getKeyframes(prop);
-    let destKfs = element.timeline().getKeyframes(destProp) || [];
+    let destKfs = element.timeline().getKeyframes(destProp) ?? [];
     for (let i = kfs.length-1; i >= 0; --i) {
         let kf = kfs[i];
         let time = kf.time;
@@ -759,12 +759,12 @@ function addMissingKeyframes(element, prop, destProp)
 
 function addShape(shapesArray, element, topLevel)
 {
-    if (element.getProperty("display") == "none") {
+    if (element.getProperty("display") === "none") {
         return;
     }
 
     let shape = {};
-    if (element.tagName == "svg") {
+    if (element.tagName === "svg") {
         shape.ty = "gr";
         shape.it = [];
         for (let child of element.children) {
@@ -772,7 +772,7 @@ function addShape(shapesArray, element, topLevel)
         }
         pushTransformAndOpacity(shape.it, element, topLevel);
 
-    } else if (element.tagName == "g" || element.tagName == "a") {
+    } else if (element.tagName === "g" || element.tagName === "a") {
         shape.ty = "gr";
         shape.it = [];
         for (let child of element.children) {
@@ -780,7 +780,7 @@ function addShape(shapesArray, element, topLevel)
         }
         pushTransformAndOpacity(shape.it, element, topLevel);
 
-    } else if (element.tagName == "rect") {
+    } else if (element.tagName === "rect") {
         shape.ty = "gr";
         shape.it = [];
 
@@ -798,7 +798,7 @@ function addShape(shapesArray, element, topLevel)
         pushStrokeAndFill(shape.it, element);
         pushTransformAndOpacity(shape.it, element, topLevel);
 
-    } else if (element.tagName == "ellipse") {
+    } else if (element.tagName === "ellipse") {
         shape.ty = "gr";
         shape.it = [];
 
@@ -815,7 +815,7 @@ function addShape(shapesArray, element, topLevel)
         pushStrokeAndFill(shape.it, element);
         pushTransformAndOpacity(shape.it, element, topLevel);
 
-    } else if (element.tagName == "path") {
+    } else if (element.tagName === "path") {
         shape.ty = "gr";
         shape.it = [];
 
@@ -828,7 +828,7 @@ function addShape(shapesArray, element, topLevel)
         return;
     }
     let id = element.getProperty("id");
-    shape.nm = (!topLevel ? id : false) || "Object";
+    shape.nm = (!topLevel ? id : false) ?? "Object";
     if (id !== null && id !== "" && !topLevel) {
         shape.ln = id.replace(/ /g, '-');
     }
@@ -858,17 +858,17 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
 {
     let isVisible = element.getProperty("visibility") === "visible" ||
         element.timeline().hasKeyframes("visibility");
-    if (element.getProperty("display") == "none" || !isVisible) {
+    if (element.getProperty("display") === "none" || !isVisible) {
         return;
     }
     // preprocess image
     let imageAsset;
-    if (element.tagName == "image") {
+    if (element.tagName === "image") {
         let href = element.getProperty("href");
-        if (href == "") {
+        if (href === "") {
             return;
         }
-        imageAsset = assets.find(function(item) { return item.orighref == href; });
+        imageAsset = assets.find(function(item) { return item.orighref === href; });
         if (!imageAsset) {
             return;
         }
@@ -884,7 +884,7 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
     }
 
     let transform = {};
-    let te = maskParentForTransform || element;
+    let te = maskParentForTransform ?? element;
     if (te.timeline().isSeparated("ks:positionX")) {
         transform.p = { s: true };
         transform.p.x = valueOrAnimation(te, "ks:positionX", 0, function(val) { return +val; });
@@ -903,8 +903,8 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
     let ip = 0;
     let op = globalOpForLayers > 0 ? globalOpForLayers : 1;
     let visibilityKeyframes = element.timeline().getKeyframes("visibility");
-    if (visibilityKeyframes.length > 1 && visibilityKeyframes[0].value == "visible" &&
-            visibilityKeyframes[1].value == "hidden") {
+    if (visibilityKeyframes.length > 1 && visibilityKeyframes[0].value === "visible" &&
+            visibilityKeyframes[1].value === "hidden") {
         ip = toRoundFrame(visibilityKeyframes[0].time);
         op = toRoundFrame(visibilityKeyframes[1].time);
     }
@@ -912,9 +912,9 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
     let id = element.getProperty("id");
     let obj = {
         ind: globalLayerIndex,
-        nm: id || "Layer "+globalLayerIndex,
+        nm: id ?? "Layer "+globalLayerIndex,
         ks: transform,
-        ao: te.getProperty("ks:motion-rotation") == "auto" &&
+        ao: te.getProperty("ks:motion-rotation") === "auto" &&
             !te.timeline().isSeparated("ks:positionX") ? 1 : 0,
         ip: ip,
         op: op,
@@ -923,7 +923,7 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
         sr: 1 // layer time stretch
     }
 
-    if (element.tagName == "g" || element.tagName == "a" || element.tagName == "svg" ||
+    if (element.tagName === "g" || element.tagName === "a" || element.tagName === "svg" ||
             maskParentForTransform) {
         // add children
         let shapes = [];
@@ -933,7 +933,7 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
         obj.ty = 4; // shape layer
         obj.shapes = shapes;
 
-    } else if (element.tagName == "image") {
+    } else if (element.tagName === "image") {
         obj.ty = 2; // image layer
         obj.refId = imageAsset.id;
 
@@ -965,22 +965,22 @@ function convertToPaths(doc, element)
     for (let child of element.children) {
         convertToPaths(doc, child);
     }
-    if (element.tagName == "rect") {
+    if (element.tagName === "rect") {
         // convert rect element to path if it has dashes to get correct start node
         if (!element.timeline().hasKeyframes("width") && !element.timeline().hasKeyframes("height")
-                && element.getProperty("stroke-dasharray") != "none") {
+                && element.getProperty("stroke-dasharray") !== "none") {
             doc.selectedElements = [ element ];
             doc.cmd.convertToPath();
         }
 
-    } else if (element.tagName == "ellipse") {
+    } else if (element.tagName === "ellipse") {
         // convert ellipse element to path if it has dashes to get correct start node
-        if (element.getProperty("stroke-dasharray") != "none") {
+        if (element.getProperty("stroke-dasharray") !== "none") {
             doc.selectedElements = [ element ];
             doc.cmd.convertToPath();
         }
 
-    } else if (element.tagName == "text") {
+    } else if (element.tagName === "text") {
         // text is always converted
         doc.selectedElements = [ element ];
         doc.cmd.convertToPath();
@@ -998,8 +998,8 @@ function detachFromSymbols(doc, element, hrefStack)
     doc.selectedElements = [ element ];
     doc.cmd.detachFromSymbol();
     // recursively detach the result of <use> elements, also check hrefStack for cyclic references
-    if (element.tagName == "use" && doc.selectedElements.length > 0 &&
-            hrefStack.indexOf(element.getProperty("href")) == -1) {
+    if (element.tagName === "use" && doc.selectedElements.length > 0 &&
+            hrefStack.indexOf(element.getProperty("href")) === -1) {
         hrefStack.push(element.getProperty("href"));
         detachFromSymbols(doc, doc.selectedElements[0], hrefStack);
         hrefStack.pop();
@@ -1009,7 +1009,7 @@ function detachFromSymbols(doc, element, hrefStack)
 function convertIterationsToKeyframes(doc, element, opTimeMs)
 {
     // in reality, opTimeMs is never infinity, but check to be certain
-    if (element.getProperty("display") == "none" || opTimeMs == Infinity) {
+    if (element.getProperty("display") === "none" || opTimeMs === Infinity) {
         return;
     }
     // convert the element tree recursively
@@ -1029,7 +1029,7 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
         if (keyframes.length < 2) {
             continue;
         }
-        let pairedProp = (prop == "ks:positionX" || prop == "ks:scaleX" || prop == "ks:anchorX") &&
+        let pairedProp = (prop === "ks:positionX" || prop === "ks:scaleX" || prop === "ks:anchorX") &&
               !element.timeline().isSeparated(prop) ? prop.substr(0, prop.length-1)+"Y" : undefined;
         let keyframesY = pairedProp ? element.timeline().getKeyframes(pairedProp) : [];
         let kfStartTime = keyframes[0].time;
@@ -1043,12 +1043,12 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
             for (let kf of keyframes) {
                 let newTime = kfEndTime + (kf.time - kfStartTime);
 
-                let valueMatch = kf.value == kfEndValue;
+                let valueMatch = kf.value === kfEndValue;
                 if (pairedProp) {
                     let kfY = keyframesY[i];
-                    valueMatch = valueMatch && (kfY.value == kfEndValueY);
+                    valueMatch = valueMatch && (kfY.value === kfEndValueY);
                 }
-                if (newTime == kfEndTime && !valueMatch) {
+                if (newTime === kfEndTime && !valueMatch) {
                     newTime += 1;
                     // change easing of the last keyframe to be stepped for immediate change
                     let kfs = element.timeline().getKeyframes(prop);
@@ -1089,7 +1089,7 @@ function convertIterationsToKeyframes(doc, element, opTimeMs)
 
 function calculateEndTime(element)
 {
-    if (element.getProperty("display") == "none") {
+    if (element.getProperty("display") === "none") {
         return;
     }
     let names = element.timeline().getKeyframeNames();
@@ -1109,9 +1109,9 @@ function getImageAssets()
 {
     let assetArray = [];
     for (let child of app.activeDocument.documentElement.children) {
-        if (child.tagName == "image" && child.getProperty("display") != "none") {
+        if (child.tagName === "image" && child.getProperty("display") !== "none") {
             let href = child.getProperty("href");
-            if (!assetArray.find(function(item) { return item.orighref == href })) {
+            if (!assetArray.find(function(item) { return item.orighref === href })) {
                 let imgdata = app.activeDocument.getMediaData(href);
                 let imginfo = app.activeDocument.getMediaInfo(href);
                 if (imgdata && imginfo) {
@@ -1119,7 +1119,7 @@ function getImageAssets()
                     let isEmbeddedImage = false;
                     if (filename.startsWith("data:embedded")) {
                         isEmbeddedImage = true;
-                        filename += imginfo.mimetype == "image/png" ? ".png" : ".jpg";
+                        filename += imginfo.mimetype === "image/png" ? ".png" : ".jpg";
                     }
                     filename = filename.replace(/file:|data:/, "");
                     let lastDashPos = filename.lastIndexOf("/");
@@ -1167,7 +1167,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
 {
     let root = app.activeDocument.documentElement;
 
-    globalFps = +(root.getProperty("ks:fps") || 10);
+    globalFps = +(root.getProperty("ks:fps") ?? 10);
 
     // detach symbols from use elements
     detachFromSymbols(app.activeDocument, root, []);
@@ -1190,9 +1190,9 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
 
     convertIterationsToKeyframes(app.activeDocument, root, frameToTimeMs(globalOpForLayers));
 
-    let viewWidth = toPx(root.getProperty("width") || "640");
-    let viewHeight = toPx(root.getProperty("height") || "480");
-    let viewBox = root.getProperty("viewBox") || ("0 0 "+viewWidth+" "+viewHeight);
+    let viewWidth = toPx(root.getProperty("width") ?? "640");
+    let viewHeight = toPx(root.getProperty("height") ?? "480");
+    let viewBox = root.getProperty("viewBox") ?? ("0 0 "+viewWidth+" "+viewHeight);
     let viewValues = viewBox.split(" ");
     let width = round(viewValues[2]);
     let height = round(viewValues[3]);
@@ -1221,7 +1221,7 @@ function createJsonAndCopyAssets(userSelectedFileUrl)
     if (assets.length > 0) {
         let hasCreatedDir = false;
         for (let asset of assets) {
-            if (asset.e == 1) { // skip embedded images
+            if (asset.e === 1) { // skip embedded images
                 continue;
             }
             if (!hasCreatedDir) {
@@ -1348,14 +1348,14 @@ function base64encode(data)
         dst += b64x.charAt(data[i+2] & 63)
     }
 
-    if (len % 3 == 2)
+    if (len % 3 === 2)
     {
         dst += b64x.charAt(data[i] >>> 2)
         dst += b64x.charAt(((data[i] & 3) << 4) | (data[i+1] >>> 4))
         dst += b64x.charAt(((data[i+1] & 15) << 2))
         dst += b64pad
     }
-    else if (len % 3 == 1)
+    else if (len % 3 === 1)
     {
         dst += b64x.charAt(data[i] >>> 2)
         dst += b64x.charAt(((data[i] & 3) << 4))
