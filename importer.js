@@ -131,8 +131,8 @@ function convertEasing(k, nextk, inx = 0)
         }
         return "steps(1)";
     }
-    let i = k.i || { x: [ 0.833 ], y: [ 0.833 ] };
-    let o = k.o || { x: [ 0.167 ], y: [ 0.167 ] };
+    let i = k.i ?? { x: [ 0.833 ], y: [ 0.833 ] };
+    let o = k.o ?? { x: [ 0.167 ], y: [ 0.167 ] };
     // sometimes i and o are plain numbers
     if (typeof i.x == 'number') { i.x = [ i.x ]; }
     if (typeof i.y == 'number') { i.y = [ i.y ]; }
@@ -586,9 +586,9 @@ function copyStroke(obj, element)
         element.setProperty("stroke-miterlimit", obj.ml);
     }
     let lc = obj.lc ? obj.lc : 2;
-    element.setProperty("stroke-linecap", linecaps[obj.lc-1] || "round");
+    element.setProperty("stroke-linecap", linecaps[obj.lc-1] ?? "round");
     let lj = obj.lj ? obj.lj : 2;
-    element.setProperty("stroke-linejoin", linejoins[obj.lj-1] || "round");
+    element.setProperty("stroke-linejoin", linejoins[obj.lj-1] ?? "round");
     if (obj.d) {
         copyDash(obj.d, element);
     }
@@ -829,8 +829,8 @@ function applyPaint(fill, stroke, trim, elements)
 
 function applyPainting(array, elements)
 {
-    let fill = findType(array, "gf") || findType(array, "fl");
-    let stroke = findType(array, "gs") || findType(array, "st");
+    let fill = findType(array, "gf") ?? findType(array, "fl");
+    let stroke = findType(array, "gs") ?? findType(array, "st");
     let trim = findType(array, "tm");
     applyPaint(fill, stroke, trim, elements);
 }
@@ -856,7 +856,7 @@ function applyMask(layer, element)
 
 function hasDashes(items)
 {
-    let stroke = findType(items, "gs") || findType(items, "st");
+    let stroke = findType(items, "gs") ?? findType(items, "st");
     return stroke && stroke.d;
 }
 
@@ -1159,7 +1159,7 @@ function layerToElement(layer)
                 }
                 if (txt.j) {
                     const align = [ "start", "end", "middle" ];
-                    text.setProperty("text-anchor", align[txt.j] || "middle");
+                    text.setProperty("text-anchor", align[txt.j] ?? "middle");
                 }
                 if (txt.tr) {
                     text.setProperty("letter-spacing", (txt.tr/1000)+"em");
@@ -1221,8 +1221,8 @@ function readMarkers(rootElement, markers)
     let ml = [];
     for (let marker of markers) {
         let m = {
-            time: (marker.tm || 0) * globalFrameDur,
-            dur: (marker.dr || 0) * globalFrameDur,
+            time: (marker.tm ?? 0) * globalFrameDur,
+            dur: (marker.dr ?? 0) * globalFrameDur,
             name: marker.cm
         };
         ml.push(m);
@@ -1248,8 +1248,8 @@ function doImport(filenameUrl)
     root.setProperty("viewBox", viewBox);
     copyNameAndHd(json, app.activeDocument.documentElement);
 
-    globalIp = json["ip"] || 0;
-    globalOp = json["op"] || 0;
+    globalIp = json["ip"] ?? 0;
+    globalOp = json["op"] ?? 0;
     root.setProperty("ks:playRangeIn", globalIp * globalFrameDur);
     root.setProperty("ks:playRangeOut", globalOp * globalFrameDur);
 
