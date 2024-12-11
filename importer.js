@@ -23,6 +23,13 @@ let globalOp = 0;
 
 let globalVersion;
 
+let globalAlertMessages = new Set();
+
+function addAlertMessage(str)
+{
+    globalAlertMessages.add(str);
+}
+
 function isUndefined(val)
 {
     return typeof val == 'undefined';
@@ -202,6 +209,9 @@ function readProperty(obj, multiplier)
 function copyProperty(obj, element, targetProperty, processor)
 {
     if (!processor) processor = function(val) { return val; };
+    if (obj.x) {
+        addAlertMessage("Expressions");
+    }
     if (obj.a != 1 && !Array.isArray(obj.k)) {
         element.setProperty(targetProperty, processor(obj.k));
     } else {
@@ -220,6 +230,9 @@ function copyProperty(obj, element, targetProperty, processor)
 function copyPropertyXY(obj, element, targetPropertyX, targetPropertyY, processor)
 {
     if (!processor) processor = function(val) { return val; };
+    if (obj.x) {
+        addAlertMessage("Expressions");
+    }
     if (obj.a != 1 && isUndefined(obj.k[0].t)) {
         element.setProperty(targetPropertyX, processor(obj.k[0], "x"));
         element.setProperty(targetPropertyY, processor(obj.k[1], "y"));
@@ -258,6 +271,9 @@ function copyPropertyXY(obj, element, targetPropertyX, targetPropertyY, processo
 
 function copyMotionPath(obj, element)
 {
+    if (obj.x) {
+        addAlertMessage("Expressions");
+    }
     if (obj.a != 1 && isUndefined(obj.k[0].t)) {
         element.setProperty("ks:positionX", obj.k[0]);
         element.setProperty("ks:positionY", obj.k[1]);
@@ -359,6 +375,9 @@ function copyTransform(obj, element, readMotionPath = true)
         let mult = -1;
         if (obj.sa) {
             let sa = +animatedToValue(obj.sa);
+            if (obj.sa.a == 1) {
+                addAlertMessage("Animated transforms");
+            }
             if (sa === 90 || sa === 270) {
                 prop = "ks:skewY";
                 mult = 1;
@@ -445,6 +464,9 @@ function copyGradient(obj, element, prop)
         return;
     }
     // animated gradients show only the first keyframe
+    if (obj.s?.a == 1 || obj.e?.a == 1 || obj.g?.k?.a == 1) {
+        addAlertMessage("Gradient animations");
+    }
     let start = validateArray(obj.s?.a != 1 ? obj.s?.k : obj.s?.k?.at(0)?.s, [0, 0]);
     let end = validateArray(obj.e?.a != 1 ? obj.e?.k : obj.e?.k?.at(0)?.s, [100, 100]);
     let grad;
@@ -598,12 +620,18 @@ function copyStroke(obj, element)
 function animatedToValue(value)
 {
     if (!value) { return 0; }
+    if (value.x) {
+        addAlertMessage("Expressions");
+    }
     return value.a == 1 || Array.isArray(value.k) ? value.k[0].s[0] : value.k;
 }
 
 // returns an 2/3 dim array
 function multiDimAnimatedToValue(value)
 {
+    if (value.x) {
+        addAlertMessage("Expressions");
+    }
     return value.a == 1 || !isUndefined(value.k[0].t) ? value.k[0].s : value.k;
 }
 
@@ -611,6 +639,9 @@ const EllipseK = 4*(Math.sqrt(2)-1)/3;
 
 function createRect(shape, posx, posy)
 {
+    if (shape.p?.a == 1 || shape.s?.a == 1 || shape.r?.a == 1) {
+        addAlertMessage("Rectangle animations");
+    }
     var p = multiDimAnimatedToValue(shape.p);
     var s = multiDimAnimatedToValue(shape.s);
     let rad = +animatedToValue(shape.r);
@@ -661,6 +692,9 @@ function createRect(shape, posx, posy)
 
 function createEllipse(shape)
 {
+    if (shape.p?.a == 1 || shape.s?.a == 1) {
+        addAlertMessage("Ellipse animations");
+    }
     var p = multiDimAnimatedToValue(shape.p);
     var s = multiDimAnimatedToValue(shape.s);
     var midx = p[0], midy = p[1], sw = s[0]/2, sh = s[1]/2;
@@ -686,6 +720,9 @@ function createEllipse(shape)
 /* Copied/modified from https://github.com/airbnb/lottie-web JS player */
 function createPolygon(shape, posx, posy, rot)
 {
+    if (shape.pt?.a == 1 || shape.or?.a == 1 || shape.os?.a == 1) {
+        addAlertMessage("Polygon animations");
+    }
     var numPts = Math.floor(animatedToValue(shape.pt));
     var angle = Math.PI*2/numPts;
     var rad = animatedToValue(shape.or);
@@ -712,6 +749,9 @@ function createPolygon(shape, posx, posy, rot)
 /* Copied/modified from https://github.com/airbnb/lottie-web JS player */
 function createStar(shape, posx, posy, rot)
 {
+    if (shape.pt?.a == 1 || shape.or?.a == 1 || shape.ir?.a == 1 || shape.os?.a == 1 || shape.is?.a == 1) {
+        addAlertMessage("Star animations");
+    }
     var numPts = Math.floor(animatedToValue(shape.pt))*2;
     var angle = Math.PI*2/numPts;
 
@@ -757,6 +797,7 @@ function copyPathTrimToDashArray(trimObj, element)
     // don't override dash if it exists
     let da = element.getProperty("stroke-dasharray").trim();
     if (da !== "" && da !== "none") {
+        addAlertMessage("Stroke dashes with path trimming");
         return;
     }
     let pathLen = new KSPathData(element.getProperty("d")).getTotalLength();
@@ -779,6 +820,9 @@ function copyPathTrimToDashArray(trimObj, element)
     element.timeline().removeAllKeyframes("stroke-dashoffset");
 
     if (Array.isArray(start)) { // start animation
+        if (end !== 1) {
+            addAlertMessage("Combined start and end path trimming");
+        }
         for (let i = start.length-1; i >= 0; --i) {
             let kf = start[i];
             element.timeline().setKeyframe("stroke-dashoffset", kf.time,
@@ -789,6 +833,9 @@ function copyPathTrimToDashArray(trimObj, element)
 
 
     } else if (Array.isArray(end)) { // end animation
+        if (start !== 1) {
+            addAlertMessage("Combined start and end path trimming");
+        }
         for (let i = end.length-1; i >= 0; --i) {
             let kf = end[i];
             element.timeline().setKeyframe("stroke-dashoffset", kf.time,
@@ -827,12 +874,30 @@ function applyPaint(fill, stroke, trim, elements)
     }
 }
 
+function countTypes(array, type)
+{
+    let count = 0;
+    for (let obj of array) {
+      if (obj.ty === type) {
+            count++;
+        }
+    };
+    return count;
+}
+
 function applyPainting(array, elements)
 {
     let fill = findType(array, "gf") ?? findType(array, "fl");
     let stroke = findType(array, "gs") ?? findType(array, "st");
     let trim = findType(array, "tm");
     applyPaint(fill, stroke, trim, elements);
+    if (countTypes(array, "gf") > 1 || countTypes(array, "fl") > 1 || countTypes(array, "gs") > 1 ||
+            countTypes(array, "st") > 1) {
+        addAlertMessage("Multiple strokes and fills");
+    }
+    if (countTypes(array, "tm") > 1) {
+        addAlertMessage("Multiple path trims");
+    }
 }
 
 function applyMask(layer, element)
@@ -873,11 +938,17 @@ function createCombinedPathElement(shapes, parentElement)
                 pathData += parsePathData(shape.ks.k, shape.closed);
             }
         } else if (shape.ty === "rc") {
+            if (shape.p?.a == 1) {
+                addAlertMessage("Rectangle animations");
+            }
             let pos = multiDimAnimatedToValue(shape.p);
             pathData += createRect(shape, pos[0], pos[1]);
         } else if (shape.ty === "el") {
             pathData += createEllipse(shape);
         } else if (shape.ty === "sr") {
+            if (shape.p?.a == 1 || shape.r?.a == 1) {
+                addAlertMessage("Star animations");
+            }
             let pos = multiDimAnimatedToValue(shape.p);
             let rot = animatedToValue(shape.r);
             if (+shape.sy === 2) {
@@ -928,6 +999,9 @@ function readShapes(shapes, parentElement, hasDashStroke)
                 copyNameAndHd(shape, rect);
                 let w = 0, h = 0;
                 if (shape.s) {
+                    if (shape.s?.a == 1) {
+                        addAlertMessage("Rectangle animations");
+                    }
                     let wh = multiDimAnimatedToValue(shape.s);
                     w = wh[0];
                     h = wh[1];
@@ -1010,6 +1084,15 @@ function readShapes(shapes, parentElement, hasDashStroke)
             readShapes(shape.it, g, hasDashes(shape.it));
 
             applyPainting(shape.it, g.children);
+
+        } else if (shape.ty === "mm") {
+            addAlertMessage("Shape merging");
+
+        } else if (shape.ty === "rp") {
+            addAlertMessage("Repeater");
+
+        } else if (shape.ty === "rd") {
+            addAlertMessage("Corner radius rounding");
         }
     }
 }
@@ -1070,6 +1153,9 @@ function layerToElement(layer)
         }
         globalTimeOffset -= layer.ip * globalFrameDur;
         applyMask(layer, elem);
+        if (layer.tm) {
+            addAlertMessage("Precomp time remapping");
+        }
 
     } else if (+layer.ty === 1) { // solid
         elem = app.activeDocument.createElement("g");
@@ -1101,7 +1187,15 @@ function layerToElement(layer)
                 }
             } else { // not embedded
                 let fullPath = globalAssets[layer.refId].u + globalAssets[layer.refId].p;
-                image.setProperty("href", fullPath);
+                try {
+                    image.setProperty("href", fullPath);
+                } catch (e) {
+                    // invalid image (maybe invalid path), try to use the image name and keep going
+                    try {
+                        image.setProperty("href", globalAssets[layer.refId].p);
+                    } catch (e) {
+                    }
+                }
             }
             image.setProperty("width", globalAssets[layer.refId].w);
             image.setProperty("height", globalAssets[layer.refId].h);
@@ -1140,6 +1234,9 @@ function layerToElement(layer)
         copyOpacity(layer.ks, text);
         elem.append(text);
         if (layer.t && layer.t.d && layer.t.d) {
+            if (layer.t.d.a == 1) {
+                addAlertMessage("Text animations");
+            }
             let txt = animatedToValue(layer.t.d);
             if (layer.t.d.k && layer.t.d.k[0] && layer.t.d.k[0].s && layer.t.d.k[0].s.t) {
                 txt = layer.t.d.k[0].s;
@@ -1170,6 +1267,10 @@ function layerToElement(layer)
                 if (txt.ls) {
                     text.setProperty("ks:positionY", -txt.ls);
                 }
+                if (txt.t?.a == 1 || txt.f?.a == 1 || txt.s?.a == 1 || txt.fc?.a == 1 ||
+                        txt.j?.a == 1 || txt.tr?.a == 1 || txt.lh?.a == 1 || txt.ls?.a == 1) {
+                    addAlertMessage("Text animations");
+                }
             }
         }
         applyMask(layer, elem);
@@ -1195,6 +1296,16 @@ function layerToElement(layer)
             elem.timeline().setKeyframe("visibility", opt, "hidden", "steps(1)");
         }
     }
+    if (+layer.ddd === 1) {
+        addAlertMessage("3D effects");
+    }
+    if (layer.ef) {
+        addAlertMessage("Layer effects");
+    }
+    if (+layer.sr !== 1) {
+        addAlertMessage("Layer time stretching: "+layer.sr);
+    }
+
     return elem;
 }
 
@@ -1253,6 +1364,13 @@ function doImport(filenameUrl)
     root.setProperty("ks:playRangeIn", globalIp * globalFrameDur);
     root.setProperty("ks:playRangeOut", globalOp * globalFrameDur);
 
+    if (json["ddd"] == 1) {
+        addAlertMessage("3D effects");
+    }
+    if (json["chars"] == 1) {
+        addAlertMessage("Embedded character data");
+    }
+
     // read assets
     if (Array.isArray(json["assets"])) {
         for (let asset of json["assets"]) {
@@ -1264,5 +1382,12 @@ function doImport(filenameUrl)
 
     if (Array.isArray(json["markers"])) {
         readMarkers(root, json["markers"]);
+    }
+
+    if (globalAlertMessages.size > 0) {
+        app.alertDeferred("Unsupported Lottie features",
+                          "These Lottie features couldn't be imported:\n\n" +
+                          Array.from(globalAlertMessages).join("\n") + "\n\n" +
+                          "The animation may display incorrectly.");
     }
 }
