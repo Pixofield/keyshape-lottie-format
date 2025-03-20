@@ -2,7 +2,7 @@
 # Lottie plugin for Keyshape
 
 This [Keyshape](https://www.keyshapeapp.com) plugin adds support for importing and exporting
-the [Lottie](https://airbnb.design/lottie/) file format.
+the [Lottie](https://airbnb.io/lottie/) file format.
 
 After installing the plugin, it is possible to export Lottie animation files.
 It is also possible to open Lottie animation files in Keyshape for editing.
@@ -22,7 +22,7 @@ Lottie animations are exported to a single JSON file.
 
 Exporting has few limitations:
 
- * text is converted to paths
+ * text is converted to paths (without emojis)
  * only top level bitmap images are supported (without width and height animations)
  * only top level visibility animations are supported
  * blending and orient along path are supported only at the top level objects
@@ -44,9 +44,6 @@ Keyshape can preview Lottie animations on web browsers with the
 [Lottie-web player](https://github.com/airbnb/lottie-web). Select
 the Lottie-web option under the preview options and then press
 the Preview button to view the animation.
-
-Exported Lottie animations can also be tested on browsers and native Android and iOS
-devices with the [LottieFiles previewer](https://www.lottiefiles.com/preview).
 
 ## Importing Lottie animations
 
@@ -70,13 +67,12 @@ Basic Lottie features are imported successfully, but there are few limitations:
 
 ## Lottie Resources
 
- * [Introduction to Lottie](https://airbnb.design/lottie/)
+ * [Introduction to Lottie](https://airbnb.io/lottie/)
  * [Lottie-web](https://github.com/airbnb/lottie-web)
  * [Lottie-iOS](https://github.com/airbnb/lottie-ios) - iOS and macOS
  * [Lottie-Android](https://github.com/airbnb/lottie-android)
  * [Lottie React Native](https://github.com/airbnb/lottie-react-native)
  * [LottieFiles](https://www.lottiefiles.com) - a collection of Lottie animations
- * [LottieFiles Previewer](https://www.lottiefiles.com/preview)
  * [Third-party Lottie players](https://airbnb.io/lottie/#/other-platforms) for Xamarin, Vue, React, Angular, etc.
 
 ## License
