@@ -411,10 +411,10 @@ function hexColor(r, g, b)
 
 function colorToCss(r, g, b, a)
 {
-    r = +r ?? 0;
-    g = +g ?? 0;
-    b = +b ?? 0;
-    a = +a ?? 1;
+    r = Number.isFinite(+r) ? +r : 0;
+    g = Number.isFinite(+g) ? +g : 0;
+    b = Number.isFinite(+b) ? +b : 0;
+    a = Number.isFinite(+a) ? +a : 1;
     if (a === 1) {
         return hexColor(r, g, b);
     }
