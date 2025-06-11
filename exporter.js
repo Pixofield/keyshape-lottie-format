@@ -828,7 +828,7 @@ function addShape(shapesArray, element, topLevel)
         return;
     }
     let id = element.getProperty("id");
-    shape.nm = (!topLevel ? id : false) ?? "Object";
+    shape.nm = (!topLevel ? id : null) ?? "Object";
     if (id !== null && id !== "" && !topLevel) {
         shape.ln = id.replace(/ /g, '-');
     }
