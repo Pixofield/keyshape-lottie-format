@@ -689,9 +689,9 @@ function pushPathShapes(shapesArray, element)
     let shapes = [];
     let lasttime = [];
     let extraSpan;
-    for (let i = 0; i < kfs.length-1 ; ++i) {
+    for (let i = 0; i < kfs.length ; ++i) {
         let kf = kfs[i];
-        let kf2 = kfs[i+1];
+        let kf2 = i < kfs.length-1 ? kfs[i+1] : kfs[i];
 
         let contours = splitToContours(kf.value);
         let contours2 = splitToContours(kf2.value);
@@ -738,7 +738,6 @@ function pushPathShapes(shapesArray, element)
     // output shapes
     for (let ci = 0; ci < shapes.length; ++ci) {
         let sh = shapes[ci];
-        sh.push({ t: toRoundFrame(lasttime[ci]) });
         let pathshape = { ty: "sh" };
         pathshape.d = 1;
         pathshape.ks = { a: 1, k: sh, hd: false };
