@@ -877,8 +877,24 @@ function multiplyProperty(element, prop, mult)
 // maskParentForTransform is set if this layer is a track matte layer
 function appendLayer(layersArray, element, assets, maskParentForTransform)
 {
-    let isVisible = element.getProperty("visibility") === "visible" ||
-        element.timeline().hasKeyframes("visibility");
+    // in and out points from the visibility property
+    let ip = 0;
+    let op = globalOpForLayers > 0 ? globalOpForLayers : 1;
+    let isVisible = false;
+    let vkfs = element.timeline().getKeyframes("visibility");
+    // insert keyframe at time 0 for the initial visibility if it is missing
+    if (vkfs.length === 0 || vkfs[0].time !== 0) {
+        vkfs.unshift({ "time": 0, "value": element.getProperty("visibility") });
+    }
+    for (let vkf of vkfs) {
+        if (vkf.value === "visible" && !isVisible) {
+            ip = toRoundFrame(vkf.time);
+            isVisible = true;
+        } else if (vkf.value === "hidden" && isVisible) {
+            op = toRoundFrame(vkf.time);
+            break;
+        }
+    }
     if (element.getProperty("display") === "none" || !isVisible) {
         return;
     }
@@ -920,15 +936,6 @@ function appendLayer(layersArray, element, assets, maskParentForTransform)
 
     let blend = blendingModes.indexOf(element.getProperty("mix-blend-mode"));
     if (blend < 0) { blend = 0; }
-
-    let ip = 0;
-    let op = globalOpForLayers > 0 ? globalOpForLayers : 1;
-    let visibilityKeyframes = element.timeline().getKeyframes("visibility");
-    if (visibilityKeyframes.length > 1 && visibilityKeyframes[0].value === "visible" &&
-            visibilityKeyframes[1].value === "hidden") {
-        ip = toRoundFrame(visibilityKeyframes[0].time);
-        op = toRoundFrame(visibilityKeyframes[1].time);
-    }
 
     let id = element.getProperty("id");
     let obj = {
