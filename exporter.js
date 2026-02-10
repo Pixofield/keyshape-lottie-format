@@ -688,10 +688,10 @@ function pushPathShapes(shapesArray, element)
     // collect shapes, each contour becomes one shape
     let shapes = [];
     let lasttime = [];
+    let extraSpan;
     for (let i = 0; i < kfs.length-1 ; ++i) {
         let kf = kfs[i];
         let kf2 = kfs[i+1];
-        let ease = convertEasing(kf.easing);
 
         let contours = splitToContours(kf.value);
         let contours2 = splitToContours(kf2.value);
@@ -701,16 +701,37 @@ function pushPathShapes(shapesArray, element)
             let val2 = ci < contours2.length ? convertContour(contours2[ci]) : val;
 
             let span = {
-                i: { x: [ ease[2] ], y: [ ease[3] ] },
-                o: { x: [ ease[0] ], y: [ ease[1] ] },
                 t: toRoundFrame(kf.time),
                 s: [ val ],
-                e: [ val2 ]
             };
+            extraSpan = undefined;
+            if (i < kfs.length-1) { // last keyframe doesn't need easing
+                if (kf.easing.startsWith("steps(")) {
+                    span.h = 1;
+                    if (kf.easing.indexOf("start") > 0) {
+                        // insert an extra span for start step unless kf2 is close to kf
+                        if (toRoundFrame(kf2.time) > toRoundFrame(kf.time) + 0.01) {
+                            extraSpan = {
+                                t: toRoundFrame(kf.time) + 0.01,
+                                s: [ val2 ],
+                                h: 1
+                            };
+                        }
+                    }
+                } else {
+                    let ease = convertEasing(kf.easing);
+                    span.i = { x: [ ease[2] ], y: [ ease[3] ] };
+                    span.o = { x: [ ease[0] ], y: [ ease[1] ] };
+                    // output end values for older players
+                    span.e = [ val2 ];
+                }
+            }
+
             if (!shapes[ci]) {
                 shapes[ci] = [];
             }
             shapes[ci].push(span);
+            if (extraSpan) shapes[ci].push(extraSpan);
             lasttime[ci] = kf2.time;
         }
     }
