@@ -648,7 +648,7 @@ function createRect(shape, posx, posy)
     var midx = p[0], midy = p[1], sw = s[0]/2, sh = s[1]/2;
     if (rad === 0) {
         let l = -sw + posx, t = -sh + posy, r = sw + posx, b = sh + posy;
-        if (shape.d !== 3) {
+        if (+shape.d !== 3) {
             return "M" + r + "," + t +
                    "L" + r + "," + b +
                    "L" + l + "," + b +
@@ -666,7 +666,7 @@ function createRect(shape, posx, posy)
         if (rad > sh) { rad = sh; }
         let rk = EllipseK * rad;
         let l = -sw + posx, t = -sh + posy, r = sw + posx, b = sh + posy;
-        if (shape.d !== 3) {
+        if (+shape.d !== 3) {
             return "M" + (r) + "," + (t+rad) +
                    "L" + (r) + "," + (b-rad) +
                    "C" + (r) + "," + (b-rad+rk) + "," + (r-rk) + "," + (b) + "," + (r-rad) + "," + (b) +
@@ -700,7 +700,7 @@ function createEllipse(shape)
     var midx = p[0], midy = p[1], sw = s[0]/2, sh = s[1]/2;
     let rxk = EllipseK * sw;
     let ryk = EllipseK * sh;
-    if (shape.d !== 3){
+    if (+shape.d !== 3){
         return "M" + (midx) + "," + (midy-sh) +
                "C" + (midx+rxk) + "," + (midy-sh) + "," +(midx+sw) + "," + (midy-ryk) + "," + (midx+sw) + "," + (midy) +
                "C" + (midx+sw) + "," + (midy+ryk) + "," +(midx+rxk) + "," + (midy+sh) + "," + (midx) + "," + (midy+sh) +
@@ -729,7 +729,7 @@ function createPolygon(shape, posx, posy, rot)
     var roundness = animatedToValue(shape.os) / 100;
     var perimSegment = 2*Math.PI*rad/(numPts*4);
     var i, currentAng = -Math.PI/ 2 + (rot/180*Math.PI);
-    var dir = shape.d === 3 ? -1 : 1;
+    var dir = +shape.d === 3 ? -1 : 1;
     var data = { v: [], i: [], o: [], c: 1 };
     for(i=0;i<numPts;i+=1){
         var x = rad * Math.cos(currentAng);
@@ -763,7 +763,7 @@ function createStar(shape, posx, posy, rot)
     var longPerimSegment = 2*Math.PI*longRad/(numPts*2);
     var shortPerimSegment = 2*Math.PI*shortRad/(numPts*2);
     var i, rad,roundness,perimSegment, currentAng = -Math.PI/ 2 + (rot/180*Math.PI);
-    var dir = shape.d === 3 ? -1 : 1;
+    var dir = +shape.d === 3 ? -1 : 1;
     var data = { v: [], i: [], o: [], c: 1 };
     for(i=0;i<numPts;i+=1){
         rad = longFlag ? longRad : shortRad;
