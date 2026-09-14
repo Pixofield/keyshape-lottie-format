@@ -315,25 +315,25 @@ function hasSkewY(element)
 {
     // if skewX value is found, then skewing Y isn't possible
     let skx = element.getProperty("ks:skewX") ?? 0;
-    if (skx !== 0) {
+    if (skx != 0) {
         return false;
     }
     // if skewX keyframe value is found, then skewing Y isn't possible
     let kfsx = element.timeline().getKeyframes("ks:skewX");
     for (let kf of kfsx) {
-        if (kf.value !== 0) {
+        if (kf.value != 0) {
             return false;
         }
     }
     // if skewY value is found, then perform skewing Y
     let sky = element.getProperty("ks:skewY") ?? 0;
-    if (sky !== 0) {
+    if (sky != 0) {
         return true;
     }
     // if skewY keyframe value is found, then perform skewing Y
     let kfsy = element.timeline().getKeyframes("ks:skewY");
     for (let kf of kfsy) {
-        if (kf.value !== 0) {
+        if (kf.value != 0) {
             return true;
         }
     }
@@ -1355,6 +1355,150 @@ try {
     app.fs.writeFileSync(outfile, html);
 
     return outfile;
+}
+
+function validateAnimation()
+{
+    let result = [];
+    let root = app.activeDocument.documentElement;
+    let context = { underMask: false };
+    validateElement(root, 0, context, result);
+    return result;
+}
+
+function validateElement(element, elementDepth, context, result)
+{
+    let isMaskOrClipPath = element.tagName === "mask" || element.tagName === "clipPath";
+
+    // all elements
+    if (element.getProperty("filter") !== "none" || element.timeline().hasKeyframes("filter")) {
+        result.push({ level: "warning", text: "Filters are not supported.", element: element });
+    }
+    if (element.getProperty("isolation") === "isolate") {
+        result.push({ level: "warning", text: "Blending isolation is not supported.", element: element });
+    }
+    if ((element.getProperty("marker-start") ?? "none") !== "none" ||
+            (element.getProperty("marker-mid") ?? "none") !== "none" ||
+            (element.getProperty("marker-end") ?? "none") !== "none") {
+        result.push({ level: "warning", text: "Markers (arrow heads) are not supported.", element: element });
+    }
+    if (elementDepth > 0 && (element.tagName === "symbol" || element.tagName === "svg") &&
+            element.getProperty("overflow") === "hidden") {
+        result.push({ level: "warning", text: "Clip to bounds is not supported in symbols or <svg> objects.", element: element });
+    }
+
+    if (element.tagName === "rect") {
+        if (+(element.getProperty("ry") ?? 0) !== 0) {
+            result.push({ level: "warning", text: "Radius Y is not supported in rects.", element: element });
+        }
+    }
+    if (isMaskOrClipPath && elementDepth !== 2) {
+        result.push({ level: "warning", text: "Masks and clip paths are supported only under top-level objects.", element: element });
+    }
+    if (element.tagName === "image" && context.underMask) {
+        result.push({ level: "warning", text: "Images are not supported under masks or clip paths.", element: element });
+    }
+    if (element.tagName === "use") {
+        if (element.timeline().hasKeyframes("width") || element.timeline().hasKeyframes("height")) {
+            result.push({ level: "warning", text: "Symbol instances don't support width or height animations.", element: element });
+        }
+    }
+
+    let dash = element.getProperty("stroke-dasharray") ?? "";
+    if (dash.split(" ").length > 2) {
+        result.push({ level: "warning", text: "Only one dash and gap value is supported.", element: element });
+    }
+
+    if (!validatePaintAnimation(element.timeline().getKeyframes("fill")) ||
+            !validatePaintAnimation(element.timeline().getKeyframes("stroke"))) {
+        result.push({ level: "warning", text: "Only solid color animations are supportd.", element: element });
+    }
+
+    // root
+    if (elementDepth === 0) {
+        let cursor = element.getProperty("cursor") ?? "auto";
+        if (cursor !== "auto" && cursor !== "default") {
+            result.push({ level: "warning", text: "Interactivity cursor values are not supported.", element: element });
+        }
+        if (+element.getProperty("opacity") !== 1 || element.timeline().hasKeyframes("opacity")) {
+            result.push({ level: "warning", text: "Document opacity is not supported.", element: element });
+        }
+        if (element.timeline().hasKeyframes("visibility")) {
+            result.push({ level: "warning", text: "Only top-level visibility animations are supported.", element: element });
+        }
+    }
+
+    // top level elements
+    if (elementDepth === 1) {
+        if (+(element.getProperty("ks:skewX") ?? 0) !== 0 || +(element.getProperty("ks:skewY") ?? 0) !== 0 ||
+                element.timeline().hasKeyframes("ks:skewX") || element.timeline().hasKeyframes("ks:skewY")) {
+            result.push({ level: "warning", text: "Top-level objects don't support skew X or skew Y.", element: element });
+        }
+        if (element.tagName === "image") {
+            if (element.timeline().hasKeyframes("width") || element.timeline().hasKeyframes("height")) {
+                result.push({ level: "warning", text: "Images don't support width or height animations.", element: element });
+            }
+        }
+        if (element.timeline().getKeyframes("visibility").length > 2) {
+            result.push({ level: "warning", text: "Only two visibility keyframes are supported.", element: element });
+        }
+    }
+
+    // elements under top elements
+    if (elementDepth > 1) {
+        if (element.tagName === "image") {
+            result.push({ level: "warning", text: "Only top-level images are supported.", element: element });
+        }
+        if (element.getProperty("ks:motion-rotation") === "auto") {
+            result.push({ level: "warning", text: "Only top-level objects support orient along path.", element: element });
+        }
+        if (element.timeline().hasKeyframes("visibility")) {
+            result.push({ level: "warning", text: "Only top-level visibility animations are supported.", element: element });
+        }
+        if (element.getProperty("mix-blend-mode") !== "normal") {
+            result.push({ level: "warning", text: "Blending is supported by top-level objects only.", element: element });
+        }
+        let skewX = +(element.getProperty("ks:skewX") ?? 0) !== 0 || hasNonZeroKeyframeValue(element, "ks:skewX");
+        let skewY = +(element.getProperty("ks:skewY") ?? 0) !== 0 || hasNonZeroKeyframeValue(element, "ks:skewY");
+        if (skewX && skewY) {
+            result.push({ level: "warning", text: "Only skew X or skew Y is supported, not both.", element: element });
+        }
+    }
+
+    if (isMaskOrClipPath) {
+        context.underMask = true;
+    }
+
+    let maskClipPathCount = 0;
+    for (let child of element.children) {
+        let clonedContext = Object.assign({}, context);
+        validateElement(child, elementDepth+1, clonedContext, result);
+        if (child.tagName === "mask" || child.tagName === "clipPath") {
+            maskClipPathCount += 1;
+        }
+    }
+    if (maskClipPathCount > 1) {
+        result.push({ level: "warning", text: "Only one mask or clip path is supported.", element: element });
+    }
+}
+
+function validatePaintAnimation(keyframes) {
+    for (let kf of keyframes) {
+        let kscolor = app.activeDocument.parseColor(kf.value);
+        if (kscolor.type !== "color") {
+            return false;
+        }
+    }
+    return true;
+}
+
+function hasNonZeroKeyframeValue(element, propertyName) {
+    for (let kf of element.timeline().getKeyframes(propertyName)) {
+        if (+kf.value !== 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // public domain base64 encoder from https://simplycalc.com/base64-source.php

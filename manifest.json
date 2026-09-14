@@ -23,15 +23,9 @@
         "file_suffix": "json",
         "script": "exporter.js",
         "filename_handler": "getFilenames",
-        "export_handler": "exportAnimation"
+        "export_handler": "exportAnimation",
+        "preview_handler": "previewAnimation",
+        "validation_handler": "validateAnimation"
       }
-    ],
-    "previewers": [
-        {
-            "previewer_id": "lottie",
-            "name": "Lottie-web",
-            "script": "exporter.js",
-            "preview_handler": "previewAnimation"
-        }
     ]
 }
